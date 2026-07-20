@@ -12,6 +12,7 @@ Git initialized on `main` branch.
 | Task | Description | Date | Notes |
 |------|-------------|------|-------|
 | TASK-001 | Initialize the empty FlexSavvy repository | 2026-07-20 | Git init, .gitignore, PROGRESS.md, DECISIONS.md, private-data/README.md, root README.md |
+| TASK-002 | Establish project governance and source-of-truth structure | 2026-07-20 | Created REPOSITORY_CONVENTIONS.md, QUALITY_GATES.md, EXTERNAL_DATA_POLICY.md; updated README with governance links; marked task DONE in index |
 
 ## Decisions
 
@@ -50,6 +51,88 @@ $ GIT_PAGER=cat git diff --check
 (no output — clean)
 ```
 
+### TASK-002 commands (2026-07-20)
+
+```bash
+$ git status --short
+ M README.md
+ M docs/AI_TASK_INDEX.md
+ M docs/PROGRESS.md
+?? docs/EXTERNAL_DATA_POLICY.md
+?? docs/QUALITY_GATES.md
+?? docs/REPOSITORY_CONVENTIONS.md
+
+$ find . -maxdepth 3 -type f | sort
+./AGENTS.md
+./docs/AI_TASK_INDEX.md
+./docs/AI_WORKFLOW.md
+./docs/DECISIONS.md
+./docs/EXTERNAL_DATA_POLICY.md
+./docs/IMPLEMENTATION_PLAN.md
+./docs/PROGRESS.md
+./docs/QUALITY_GATES.md
+./docs/REPOSITORY_CONVENTIONS.md
+./docs/ai-tasks/TASK-001.md
+… (TASK-002 through TASK-114 present, no other new files)
+./.gitignore
+./MANUAL_ACTIONS.md
+./README.md
+./private-data/README.md
+(no src/, __tests__, public/, node_modules/, package.json, or application directories)
+
+$ GIT_PAGER=cat git diff --check
+(exit code 0 — no trailing whitespace or merge conflict markers)
+
+$ python3 -c "
+import os, re, sys
+broken = []
+for root, dirs, files in os.walk('.'):
+    if '.git' in root: continue
+    for f in files:
+        if not f.endswith('.md'): continue
+        fp = os.path.join(root, f)
+        with open(fp) as fh:
+            for ln, line in enumerate(fh, 1):
+                for m in re.finditer(r'\\]\\(([^)]+)\\)', line):
+                    link = m.group(1)
+                    if link.startswith('http://') or link.startswith('https://'): continue
+                    path = link.split('#')[0]
+                    if not path: continue
+                    target = os.path.normpath(os.path.join(root, path))
+                    if not os.path.exists(target):
+                        broken.append(f'{fp}:{ln} -> {link}')
+sys.exit(1) if broken else None
+for b in broken: print('BROKEN:', b)
+"
+All relative Markdown links resolve OK.
+(exit code 0)
+
+### TASK-002 AGENTS.md consistency check (2026-07-20)
+
+A keyword cross-reference script compared 13 key AGENTS.md assertions against the three new governance documents. Results:
+
+| AGENTS.md assertion | Found in |
+|---|---|
+| Static files only, no server runtime | REPOSITORY_CONVENTIONS.md |
+| No database/account system | EXTERNAL_DATA_POLICY.md (ADR-004 in DECISIONS.md) |
+| Smart-meter data stays in browser | REPOSITORY_CONVENTIONS.md, EXTERNAL_DATA_POLICY.md |
+| Web Worker for heavy computation | REPOSITORY_CONVENTIONS.md |
+| Adapters for external APIs | REPOSITORY_CONVENTIONS.md, EXTERNAL_DATA_POLICY.md |
+| Tests run without internet | QUALITY_GATES.md, EXTERNAL_DATA_POLICY.md |
+| Committed fixtures for external data | REPOSITORY_CONVENTIONS.md, QUALITY_GATES.md, EXTERNAL_DATA_POLICY.md |
+| UTC internally, Europe/London locally | DECISIONS.md (ADR-003) |
+| No trailing whitespace / `git diff --check` rule | REPOSITORY_CONVENTIONS.md, QUALITY_GATES.md |
+| Never claim command passed without evidence | REPOSITORY_CONVENTIONS.md, QUALITY_GATES.md |
+| One task = one coherent commit | REPOSITORY_CONVENTIONS.md |
+| No sensitive data in fixtures | REPOSITORY_CONVENTIONS.md, EXTERNAL_DATA_POLICY.md |
+| Strict TypeScript | REPOSITORY_CONVENTIONS.md |
+
+All 13 assertions are covered across the three new documents plus existing DECISIONS.md. Coverage is complete.
+
+### TASK-002 decision record note (2026-07-20)
+
+TASK-002 requirement #4 asked for an initial decision record confirming fully static deployment, browser-only smart-meter processing, UTC internally with Europe/London for presentation, and no accounts/database/upload API. These four points were already recorded as ADR-001 through ADR-004 in `docs/DECISIONS.md` during TASK-001. No new ADR was added; the existing records satisfy the requirement.
+
 ## Known Risks
 
 | Risk | Severity | Mitigation |
@@ -60,4 +143,4 @@ $ GIT_PAGER=cat git diff --check
 
 ## Next Task
 
-TASK-002 — Establish project governance and source-of-truth structure
+TASK-003 — Validate the fresh-start baseline

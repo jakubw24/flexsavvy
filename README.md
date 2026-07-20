@@ -34,6 +34,12 @@ Implementation is controlled by the task index:
 - [Decisions](docs/DECISIONS.md) — architectural decision records
 - [Agent Rules](AGENTS.md) — permanent engineering rules for AI-assisted development
 
+### Governance
+
+- [Repository Conventions](docs/REPOSITORY_CONVENTIONS.md) — source layout, naming, module boundaries, and commit policy
+- [Quality Gates](docs/QUALITY_GATES.md) — mandatory verification commands per task
+- [External Data Policy](docs/EXTERNAL_DATA_POLICY.md) — offline testing, fixture provenance, and API rules
+
 Run tasks in numerical order. Each task is self-contained and reviewable.
 
 ## License
