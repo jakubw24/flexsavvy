@@ -14,6 +14,7 @@ Git initialized on `main` branch.
 | TASK-001 | Initialize the empty FlexSavvy repository | 2026-07-20 | Git init, .gitignore, PROGRESS.md, DECISIONS.md, private-data/README.md, root README.md |
 | TASK-002 | Establish project governance and source-of-truth structure | 2026-07-20 | Created REPOSITORY_CONVENTIONS.md, QUALITY_GATES.md, EXTERNAL_DATA_POLICY.md; updated README with governance links; marked task DONE in index |
 | TASK-003 | Validate the fresh-start baseline | 2026-07-20 | Verified clean state: no legacy code, all 114 task files present, governance consistent, links resolve; created PROJECT_BASELINE.md; marked task DONE in index |
+| TASK-004 | Create product specification | 2026-07-20 | Created docs/PRODUCT_SPEC.md with users, JTBD, positioning, scope, journey, outputs, confidence labels, terminology, non-goals; verified output coverage and non-goal testability; marked task DONE in index. **Key decisions:** (1) standing charge applied per calendar day across full analysis span — matching UK supplier practice — even on days with missing data; (2) export income included via `current_net_cost` when both export data and an export rate are available, otherwise treated as zero; (3) variable renamed from `current_cost` to `current_net_cost` throughout §5 formulas. See Known Risks below.
 
 ## Decisions
 
@@ -176,6 +177,18 @@ $ python3 [Governance cross-check]
 Key assertions verified across all governance documents. No contradictions found.
 ```
 
+### TASK-004 commands (2026-07-20)
+
+```bash
+$ git status --short
+M  docs/AI_TASK_INDEX.md
+A  docs/PRODUCT_SPEC.md
+M  docs/PROGRESS.md
+
+$ GIT_PAGER=cat git diff --check
+(no output — clean)
+```
+
 ### TASK-003 AGENTS.md consistency cross-reference (2026-07-20)
 
 Five core architectural assertions verified across seven governance files:
@@ -197,7 +210,9 @@ No contradictions found. Assertions distributed as expected: AGENTS.md and DECIS
 | DST boundary handling in half-hour intervals | High | TASK-022, TASK-023 will address explicitly |
 | Privacy compliance for smart-meter data | Critical | private-data/ directory enforced via .gitignore; privacy design in TASK-007 |
 | Tariff adapter correctness | Critical | Fixture-only tests mandated by AGENTS.md |
+| Standing charge model assumption — calendar span vs. days with data | Medium | Choice recorded in TASK-004 notes and §5.1 of PRODUCT_SPEC.md; may need review during QA if test households have sparse data across long date ranges |
+| Export income omission for suppliers without export rates | Low | Defaulted to zero per §5.1; impact documented in terminology table and PROGRESS.md; TASK-006 (calculation methodology) will formalise edge-case behaviour |
 
 ## Next Task
 
-TASK-004 — Create product specification
+TASK-005 — Create canonical data schema
