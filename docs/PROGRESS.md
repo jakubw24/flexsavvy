@@ -13,6 +13,7 @@ Git initialized on `main` branch.
 |------|-------------|------|-------|
 | TASK-001 | Initialize the empty FlexSavvy repository | 2026-07-20 | Git init, .gitignore, PROGRESS.md, DECISIONS.md, private-data/README.md, root README.md |
 | TASK-002 | Establish project governance and source-of-truth structure | 2026-07-20 | Created REPOSITORY_CONVENTIONS.md, QUALITY_GATES.md, EXTERNAL_DATA_POLICY.md; updated README with governance links; marked task DONE in index |
+| TASK-003 | Validate the fresh-start baseline | 2026-07-20 | Verified clean state: no legacy code, all 114 task files present, governance consistent, links resolve; created PROJECT_BASELINE.md; marked task DONE in index |
 
 ## Decisions
 
@@ -93,7 +94,7 @@ for root, dirs, files in os.walk('.'):
         fp = os.path.join(root, f)
         with open(fp) as fh:
             for ln, line in enumerate(fh, 1):
-                for m in re.finditer(r'\\]\\(([^)]+)\\)', line):
+                for m in re.finditer(r'\]\(([^)]+)\)', line):
                     link = m.group(1)
                     if link.startswith('http://') or link.startswith('https://'): continue
                     path = link.split('#')[0]
@@ -133,6 +134,62 @@ All 13 assertions are covered across the three new documents plus existing DECIS
 
 TASK-002 requirement #4 asked for an initial decision record confirming fully static deployment, browser-only smart-meter processing, UTC internally with Europe/London for presentation, and no accounts/database/upload API. These four points were already recorded as ADR-001 through ADR-004 in `docs/DECISIONS.md` during TASK-001. No new ADR was added; the existing records satisfy the requirement.
 
+### TASK-003 commands (2026-07-20)
+
+```bash
+$ git branch --show-current
+main
+
+$ git status --short
+(no output — clean working tree before task)
+
+$ GIT_PAGER=cat git log --oneline --all
+193a2eb (HEAD -> main, origin/main) task-002: establish-project-governance
+59e100c task-001: initialize-fresh-start-repository
+
+$ GIT_PAGER=cat git diff --check
+(no output — clean)
+
+$ find docs/ai-tasks -name 'TASK-*.md' | wc -l
+114
+
+$ python3 [Markdown link checker]
+All relative Markdown links resolve OK.
+(exit code 0)
+
+$ python3 [Legacy code scanner]
+No legacy source code, package manifests, lockfiles, or build output found.
+
+$ python3 [Task index and file validator]
+Tasks found in index: 114
+DONE: ['001', '002']
+TASK-001 DONE: True
+TASK-002 DONE: True
+Missing task files: 0
+All 114 task files present.
+No legacy repository or implementation matrix references found.
+
+$ python3 [Dependency chain checker]
+All dependency chains are valid — dependencies always reference earlier tasks.
+
+$ python3 [Governance cross-check]
+Key assertions verified across all governance documents. No contradictions found.
+```
+
+### TASK-003 AGENTS.md consistency cross-reference (2026-07-20)
+
+Five core architectural assertions verified across seven governance files:
+
+| Assertion | AGENTS.md | DECISIONS.md | REPO_CONV | QUALITY_GATES | EXT_DATA_POLICY | IMPLEMENTATION_PLAN |
+|---|---|---|---|---|---|---|
+| Fully static, no server runtime | ✓ | ✓ | — | — | — | ✓ |
+| No database / no accounts | ✓ | ✓ | — | — | — | — |
+| Browser-only smart-meter data | ✓ | ✓ | ✓ | — | — | ✓ |
+| UTC internally, Europe/London locally | ✓ | ✓ | — | — | — | ✓ |
+| Tests offline / fixtures only | — | — | ✓ | ✓ | ✓ | ✓ |
+
+No contradictions found. Assertions distributed as expected: AGENTS.md and DECISIONS.md carry architectural assertions; operational rules enforce them procedurally.
+
 ## Known Risks
 
 | Risk | Severity | Mitigation |
@@ -143,4 +200,4 @@ TASK-002 requirement #4 asked for an initial decision record confirming fully st
 
 ## Next Task
 
-TASK-003 — Validate the fresh-start baseline
+TASK-004 — Create product specification

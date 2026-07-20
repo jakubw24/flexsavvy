@@ -37,7 +37,7 @@ Confirm that the project is genuinely clean, internally consistent and ready for
    - missing ignore rules;
    - task-index defects;
    - governance contradictions.
-5. Create `docs/GREENFIELD_BASELINE.md` recording:
+5. Create `docs/PROJECT_BASELINE.md` recording:
    - date;
    - branch;
    - starting file inventory;
@@ -45,6 +45,11 @@ Confirm that the project is genuinely clean, internally consistent and ready for
    - governance checks;
    - readiness for TASK-004.
 6. Update progress and mark TASK-003 `DONE`.
+
+### Canonical document guard
+
+The canonical verification document is docs/PROJECT_BASELINE.md.
+Do not create, restore, rename to or reference docs/GREENFIELD_BASELINE.md.
 
 ### Explicitly out of scope
 

@@ -8,7 +8,7 @@ Status values: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED`.
 |---|---|---|---|---|---|---|
 | [001](ai-tasks/TASK-001.md) | DONE | 0 — Fresh start initialization | Initialize the empty FlexSavvy repository | None | `none` | low |
 | [002](ai-tasks/TASK-002.md) | DONE | 0 — Fresh start initialization | Establish project governance and source-of-truth structure | 001 | `none` | low |
-| [003](ai-tasks/TASK-003.md) | TODO | 0 — Fresh start initialization | Validate the fresh-start baseline | 001, 002 | `none` | low |
+| [003](ai-tasks/TASK-003.md) | DONE | 0 — Fresh start initialization | Validate the fresh-start baseline | 001, 002 | `none` | low |
 | [004](ai-tasks/TASK-004.md) | TODO | 1 — Product documentation | Create product specification | 003 | `none` | high |
 | [005](ai-tasks/TASK-005.md) | TODO | 1 — Product documentation | Create canonical data schema | 004 | `none` | critical |
 | [006](ai-tasks/TASK-006.md) | TODO | 1 — Product documentation | Create calculation methodology | 004, 005 | `none` | critical |
