@@ -65,7 +65,8 @@ The public alpha release delivers:
 2. **Tariff definition**
    - Current tariff entry (flat or time-of-use with standing charges).
    - Optional export rate for households with generation (e.g. solar PV); omitted when unavailable.
-   - Optional manual tariff definition for comparison scenarios.
+   - Manual tariff definition for comparison scenarios (the primary method in public alpha).
+   - The Octopus tariff catalogue is **not** part of public alpha; it is a paid-ready capability (§3.2).
    - Rates expressed in pence per kWh including VAT.
 
 3. **Core calculations**
@@ -152,11 +153,11 @@ User enters or confirms their current electricity tariff:
 - Standing charge in pence per day.
 - Optional export rate if applicable.
 
-If the user's tariff is a known Octopus product, they may select it from a cached catalogue instead of manual entry.
+When the Octopus tariff catalogue module has been implemented and enabled, the user may additionally select a known Octopus product from the cached catalogue instead of manual entry. Manual tariff definition remains available even when the catalogue is present.
 
 ### Step 5: Candidate tariff selection (optional)
 
-User optionally adds comparison tariffs — either from a catalogue or by manual definition. At least one candidate must differ from the current tariff for tariff-only saving to be meaningful.
+User optionally adds comparison tariffs by manual definition. When the Octopus tariff catalogue module has been implemented and enabled, catalogue selection is also available for candidate tariffs. At least one candidate must differ from the current tariff for tariff-only saving to be meaningful.
 
 ### Step 6: Appliance declaration (optional)
 
@@ -273,7 +274,12 @@ combined_saving = current_net_cost − flexible_net_cost(candidate_tariff, optim
 
 ### 5.5 Cost Units
 
-All monetary values are expressed in **pence** internally and displayed in **£ GBP** to two decimal places, using half-up rounding at the point of display (e.g., £0.005 rounds to £0.01). Values less than 1p display as £0.00 but retain full precision for further calculations. Very large sums may show thousands separators in the UI but the underlying value is always exact pence converted at display time. No rounding occurs until final display; intermediate calculations retain full floating-point precision.
+- **Rates** are expressed in pence per kWh including VAT.
+- **Energy** is expressed in kWh.
+- **Monetary calculations** use a decimal-safe representation or appropriately scaled integers to avoid binary-floating-point rounding artefacts. The exact canonical calculation representation (e.g., integer pence-and-farthing units, arbitrary-precision decimals) will be finalised in TASK-006 (calculation methodology).
+- Intermediate values are not rounded merely for display; they retain their full precision until the final presentation boundary.
+- Display rounding occurs only when presenting a value to the user, using half-up rounding to two decimal places of £ GBP (e.g., £0.005 rounds to £0.01), unless a tariff explicitly requires another rounding rule.
+- Very large sums may show thousands separators in the UI; values less than 1p display as £0.00.
 
 ---
 
@@ -286,7 +292,7 @@ Every calculation result carries a confidence label derived from data quality. T
 | Label | Criteria |
 |---|---|
 | **High** | All expected intervals are present, no duplicates, no extreme values outside normal ranges, tariff rates fully resolved for every interval |
-| **Medium** | Minor gaps (≤5% of expected intervals), or minor rate resolution issues (e.g., a single dynamic rate missing but interpolatable from adjacent intervals via committed fixture), or standing charge must be estimated |
+| **Medium** | Minor gaps (≤5% of expected intervals), or minor rate resolution issues (e.g., a single dynamic rate cannot be resolved — the interval is excluded and a warning is shown), or standing charge must be estimated |
 | **Low** | Significant gaps (>5% of expected intervals), unresolved import rates on >5% of billable intervals, duplicate intervals requiring user confirmation, or extreme values that may distort results unless explicitly accepted by the user |
 
 ### 6.2 Confidence calculation rules

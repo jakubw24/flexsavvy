@@ -203,6 +203,47 @@ Five core architectural assertions verified across seven governance files:
 
 No contradictions found. Assertions distributed as expected: AGENTS.md and DECISIONS.md carry architectural assertions; operational rules enforce them procedurally.
 
+## Corrective Audit — Tasks 001–004
+
+A post-baseline review found documentation inconsistencies between the committed repository state and the governance rules in `AGENTS.md` and `docs/REPOSITORY_CONVENTIONS.md`. These were corrected across seven prompts without introducing any application code.
+
+### Corrections applied
+
+| # | File | Issue | Fix |
+|---|------|-------|-----|
+| 1 | `.gitignore` | Lockfiles (`package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`) were ignored despite REPOSITORY_CONVENTIONS.md requiring them committed | Removed all three lines |
+| 2 | `.gitignore` | `.astro/` missing from generated-output ignore rules (only `dist/` present) | Added `.astro/` beside `dist/` |
+| 3 | `private-data/README.md` | Fixture location stated as `` `src/fixtures/` `` instead of canonical root-level `fixtures/` | Corrected to `` `fixtures/` `` |
+| 4 | `docs/PRODUCT_SPEC.md` | §6.1 suggested missing dynamic rates could be interpolated from adjacent intervals via fixture | Replaced: interval is excluded and a warning is shown |
+| 5 | `docs/PRODUCT_SPEC.md` | §5.5 simultaneously claimed exact pence and binary floating-point precision for intermediates | Rewritten: decimal-safe or scaled integers; deferred canonical representation to TASK-006 |
+| 6 | `docs/PRODUCT_SPEC.md` | Public-alpha scope implied catalogue selection was available in alpha | Clarified: catalogue is paid-ready (§3.2); manual definition is primary in alpha; catalogue appears only when implemented and enabled |
+| 7 | `docs/PROJECT_BASELINE.md` | Starting file count listed 9 docs + 128 total, self-counting `PROJECT_BASELINE.md` before it existed | Corrected to 8 docs + 127 starting; post-task total 128 |
+| 8 | `docs/PROJECT_BASELINE.md` | Retrospective audit amendment appended recording all findings | Added new section with five findings and effect on conclusions |
+
+### Task statuses
+
+Tasks 001 through 004 remain `DONE`. No status changes were made in `docs/AI_TASK_INDEX.md`.
+
+TASK-005 (Create canonical data schema) remains the next task.
+
+### Commands executed
+
+```bash
+$ git diff --check
+(no output — clean)
+(exit code 0)
+
+$ git status --short
+ M .gitignore
+ M docs/PRODUCT_SPEC.md
+ M docs/PROJECT_BASELINE.md
+ M private-data/README.md
+
+$ python3 [Markdown link checker]
+All relative Markdown links resolve OK.
+(exit code 0)
+```
+
 ## Known Risks
 
 | Risk | Severity | Mitigation |

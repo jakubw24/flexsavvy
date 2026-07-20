@@ -19,7 +19,7 @@ Under no circumstances should real smart-meter data be committed to the reposito
 
 ## What you may commit
 
-Test fixtures belong in `src/fixtures/` or equivalent committed locations. Fixtures must be:
+Test fixtures belong in `fixtures/`. Fixtures must be:
 
 - Synthetic or anonymised data with no real meter identifiers.
 - Committed and reviewed as part of the normal pull-request process.
