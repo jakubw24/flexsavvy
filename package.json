@@ -1,0 +1,31 @@
+{
+  "name": "flexsavvy",
+  "version": "0.1.0",
+  "description": "Privacy-first UK household electricity flexibility simulator — fully static Astro site with React/TypeScript application.",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@astrojs/react": "^4.2.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "astro": "^5.7.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.2.0"
+  }
+}
