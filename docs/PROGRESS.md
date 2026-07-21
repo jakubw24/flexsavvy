@@ -616,6 +616,48 @@ python3 -c "<markdown-relative-link-checker from QUALITY_GATES.md>"
 1. Implementers may have coded to the old "both required" rule; TASK-007+ implementation will need verification against the corrected spec.
 2. The interaction effect formula in §5.4 (`combined_saving − (tariff_only + flexibility_only)`) is stated as non-zero in general but `0` when no flexible loads exist — this edge case depends on implementers reading the full §5.14.
 
+### TASK-005 corrective audit — schema example and dynamic-price fixes (2026-07-21)
+
+**Defects found**:
+1. **Wrong `local_hour` in DST example (§10.1)**: The valid interval example with `utc_start: "2025-03-30T01:30:00Z"` had `local_hour: 1`. On 2025-03-30 the UK springs forward at 01:00 UTC, so 01:30 UTC = 02:30 BST. Correct value is `2`.
+2. **Wrong `date_range_utc_end` in minimal scenario (§10.6)**: The dataset contains a single interval ending at `00:30:00Z` but the field was set to `2025-03-30T23:30:00Z` (as if a full day of data). Correct value is `2025-03-30T00:30:00Z`.
+3. **Blanket non-negative rate rule (§5.4)**: Stated "All rates are non-negative numbers" as a universal validity rule, contradicting TASK-037 which explicitly requires preserving negative dynamic interval prices.
+4. **Unclear invalid negative-rate example (§10.9)**: The error text said "Rates must be non-negative" without specifying that this applies only to flat (and TOU) tariffs.
+
+**Changes applied**:
+- §10.1: `local_hour` corrected from 1 to 2; explanatory text now references BST spring-forward transition.
+- §10.6: `date_range_utc_end` corrected from `2025-03-30T23:30:00Z` to `2025-03-30T00:30:00Z`.
+- §5.4: Replaced blanket "All rates are non-negative" with three specific rules: flat import rates non-negative, TOU period rates non-negative, dynamic interval rates may be negative and must be preserved exactly.
+- §10.9: Error message narrowed to "Flat tariff rates must be non-negative" with cross-reference noting that dynamic prices may legitimately be negative (see §5.4).
+
+**Files changed**: `docs/DATA_SCHEMA.md` (4 sections), `docs/PROGRESS.md` (this entry).
+
+**Commands run**:
+```bash
+python3 -c "<zoneinfo DST verification>"
+# PASS: 2025-03-30T01:30:00Z maps to Europe/London hour 2 (BMT/BST)
+
+python3 -c "<JSON block parser for DATA_SCHEMA.md>"
+# All 10 JSON blocks parsed successfully.
+
+grep -n 'non-negative\|negative rate\|negative price\|date_range_utc_end\|local_hour' docs/DATA_SCHEMA.md
+# Confirmed no blanket negative-rate prohibitions remain; §5.4 split into flat/TOU/dynamic rules.
+
+GIT_PAGER=cat git diff --check
+# Exit code 0 — no whitespace or conflict-marker errors.
+
+python3 -c "<markdown relative-link checker from QUALITY_GATES.md>"
+# All relative links resolve (exit code 0).
+```
+
+**Assumptions**:
+1. The DST example timestamp (`2025-03-30T01:30:00Z`) was chosen intentionally as a boundary case; only the derived `local_hour` and its explanation were incorrect.
+2. The minimal scenario's `date_range_utc_end` was a copy-paste error from a full-day example; the single interval ends at 00:30 UTC.
+3. No code changes needed — this is a documentation-only correction reconciling TASK-005 with TASK-037 requirements.
+
+**Remaining risks**:
+1. Implementers who already coded to the blanket "all rates non-negative" rule in TASK-037+ will need to verify their dynamic-pricing code allows negative values.
+
 ## Known Risks
 
 | Risk | Severity | Mitigation |

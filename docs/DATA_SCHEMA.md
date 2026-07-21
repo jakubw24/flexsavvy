@@ -207,7 +207,9 @@ Per-interval pricing resolved from an external rate schedule (e.g., Agile Octopu
 
 A tariff is valid when:
 - `tariff_type` is one of `"flat"`, `"tou"`, or `"dynamic"`.
-- All rates are non-negative numbers.
+- Flat tariff `import_rate` values must be non-negative.
+- Scheduled TOU period `rate` values must be non-negative.
+- Dynamic interval `rate` values may be negative; a negative dynamic price is valid and must be preserved exactly.
 - Flat tariffs have a defined `import_rate`.
 - TOU tariffs have at least one period in `periods`.
 - TOU periods define valid local times (`HH:MM` where `00 ≤ HH ≤ 23`).
@@ -422,11 +424,11 @@ Conditional output — produced only when the battery module is implemented and 
   "import_kwh": 0.45,
   "export_kwh": null,
   "local_date": "2025-03-30",
-  "local_hour": 1
+  "local_hour": 2
 }
 ```
 
-This represents a valid import observation of 0.45 kWh during the half-hour from 01:30 to 02:00 UTC on 2025-03-30. No export data exists for this interval (null, not zero). The local date and hour are derived fields computed at ingestion.
+This represents a valid import observation of 0.45 kWh during the half-hour from 01:30 to 02:00 UTC on 2025-03-30. On this date the UK has just transitioned to British Summer Time (clocks spring forward at 01:00 UTC), so 01:30 UTC corresponds to 02:30 Europe/London local time, hence `local_hour` is 2. No export data exists for this interval (null, not zero). The local date and hour are derived fields computed at ingestion.
 
 ### 10.2 Valid Consumption Interval — Measured Zero
 
@@ -520,7 +522,7 @@ A 2.5 kW washing machine with a 2.5-hour cycle (5 intervals). Must start between
     ],
     "source_format": "generic_csv",
     "date_range_utc_start": "2025-03-30T00:00:00Z",
-    "date_range_utc_end": "2025-03-30T23:30:00Z",
+    "date_range_utc_end": "2025-03-30T00:30:00Z",
     "interval_count": 1,
     "schema_version": "1.0.0"
   },
@@ -567,7 +569,7 @@ Minimal valid scenario: one interval, flat tariff, no candidates, no appliances,
 }
 ```
 
-**Error**: Rates must be non-negative. A negative import rate is not physically meaningful for residential tariffs.
+**Error**: Flat tariff rates must be non-negative. A negative import rate on a flat tariff is not physically meaningful for residential tariffs. (Dynamic interval prices may legitimately be negative; see §5.4.)
 
 ### 10.10 INVALID — Appliance cycle shorter than interval granularity
 
