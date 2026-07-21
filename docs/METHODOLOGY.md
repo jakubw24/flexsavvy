@@ -521,23 +521,40 @@ unmet_energy = max(0, 31.578947... − 56.0) = 0 kWh ✓
 
 ### 5.1 State-of-charge discretisation
 
-Battery state of charge (SOC) is tracked as a percentage of `capacity_kwh`:
+Battery state of charge (SOC) is tracked in absolute energy units (kWh).
+Percentage values are converted to kWh before any optimisation:
 
 ```
 soc_kwh (kWh) = soc_percent (%) × capacity_kwh (kWh) ÷ 100 (%)
+min_soc_kwh   = min_soc_percent (%) × capacity_kwh (kWh) ÷ 100 (%)
+max_soc_kwh   = max_soc_percent (%) × capacity_kwh (kWh) ÷ 100 (%)
 ```
 
-SOC is bounded:
+**SOC states use exact 0.25 kWh increments.**
+The valid SOC set is the sorted list of values:
 
 ```
-min_soc_kwh = min_soc_percent (%) × capacity_kwh (kWh) ÷ 100 (%)
-max_soc_kwh = max_soc_percent (%) × capacity_kwh (kWh) ÷ 100 (%)
+{ k × 0.25 | min_soc_kwh ≤ k × 0.25 ≤ max_soc_kwh, k ∈ ℤ }
 ```
 
-For discrete optimisation, SOC levels are quantised to a step size chosen by the
-implementation. A reasonable default is `soc_step = capacity_kwh ÷ N_levels` where
-`N_levels` balances solution quality and computational cost (e.g., `N_levels = 20`).
-The implementation must document the chosen discretisation at runtime.
+**Initial-state mapping rule.** Before optimisation begins, the initial SOC value is mapped
+to a valid state as follows:
+
+1. Convert the initial SOC percentage to kWh: `soc_kwh = soc_percent × capacity_kwh ÷ 100`.
+2. Validate that this value lies within the configured bounds
+   `[min_soc_kwh, max_soc_kwh]`. If it does not, emit an optimisation warning and reject
+   the configuration.
+3. Map to the nearest valid 0.25 kWh state:
+   `soc_mapped = round(soc_kwh ÷ 0.25) × 0.25`, then clip to bounds.
+4. On an exact half-step tie (e.g., 2.125 kWh is equidistant from 2.0 and 2.25),
+   **round downward** (floor the result of `soc_kwh ÷ 0.25`) to avoid inventing stored
+   energy.
+5. When the mapping difference `|soc_mapped − soc_kwh|` is non-zero, record it as an
+   assumption or warning.
+
+**Reject configurations that produce no valid SOC states.** If `min_soc_kwh > max_soc_kwh`
+or if the interval `[min_soc_kwh, max_soc_kwh]` contains no multiple of 0.25 kWh, the
+battery configuration is infeasible and must be rejected with an optimisation warning.
 
 ### 5.2 Actions and state transitions
 
@@ -549,26 +566,39 @@ At each half-hour interval, the battery takes one of three actions:
 | **Discharge** | Battery → Home (up to `max_discharge_rate_kw`) | Reduces grid import or enables export |
 | **Idle** | No flow | SOC unchanged (aside from self-discharge if modelled) |
 
-Per-interval energy transfer:
+**Charge and discharge cannot occur simultaneously.** Only one of {charge, discharge, idle}
+is active per interval.
+
+**Efficiency convention.** Let `round_trip_efficiency` be the user-provided round-trip
+factor (absent = implementation default). Charge and discharge efficiency are each the
+square root:
 
 ```
-Δsoc_kwh = power_kw (kW) × 0.5 (h) × direction_factor × efficiency_factor
+eta_charge    = sqrt(round_trip_efficiency)
+eta_discharge = sqrt(round_trip_efficiency)
+```
+
+**SOC transition.** Grid-side charge energy and delivered discharge energy are used:
+
+```
+soc_after = soc_before
+          + grid_charge_kwh × eta_charge
+          − delivered_discharge_kwh ÷ eta_discharge
 ```
 
 Where:
-- `direction_factor` = `+1` for charge, `−1` for discharge, `0` for idle.
-- `efficiency_factor` accounts for round-trip losses:
-  - During charging: `sqrt(round_trip_efficiency)` applied to energy entering the battery.
-  - During discharging: `sqrt(round_trip_efficiency)` applied to energy leaving the battery.
-  - If `round_trip_efficiency` is absent, a default (e.g. `0.90`) is applied.
+- `grid_charge_kwh` is the energy drawn from the grid for charging (kWh).
+  For charge action: `0 ≤ grid_charge_kwh ≤ max_charge_rate_kw × 0.5 h`.
+- `delivered_discharge_kwh` is the energy delivered to the home (kWh).
+  For discharge action: `0 ≤ delivered_discharge_kwh ≤ max_discharge_rate_kw × 0.5 h`.
+- For idle: both terms are zero, so `soc_after = soc_before`.
 
-SOC transition for interval _i_:
+**All transitions must land on a valid 0.25 kWh SOC state.** After applying the above
+formula, `soc_after` is mapped to the nearest valid 0.25 kWh value (rounding; half-step
+ties round downward per §5.1). If the resulting state falls outside `[min_soc_kwh,
+max_soc_kwh]`, the action is infeasible at that SOC level.
 
-```
-soc_after_i = soc_before_i + Δsoc_kwh_i ÷ capacity_kwh × 100 (%)
-```
-
-Constraint: `min_soc_percent ≤ soc_after_i ≤ max_soc_percent` for every interval.
+**Power and SOC bounds apply every interval.** See §5.3.
 
 ### 5.3 Constraints
 
@@ -594,109 +624,130 @@ V_i(soc) = min over actions a ∈ {charge, discharge, idle} of:
 Where:
 - `grid_cost_i(a, soc)` is the interval cost given action _a_ at SOC state _soc_.
 - `soc'` is the resulting SOC after applying action _a_ for 0.5 h.
-- Boundary condition at the final interval: `V_T(soc) = terminal_soc_cost(soc)`.
+- Boundary condition at the final interval: feasible only when `soc` satisfies
+  the hard terminal-SOC constraint (see §5.5). Infeasible terminal states receive
+  infinite cost, pruned from the backward pass.
 
 Grid cost per interval:
 
 ```
-grid_import_i (kWh) = max(0, household_consumption_i − battery_discharge_i + battery_charge_i)
-grid_export_i (kWh) = max(0, battery_discharge_i + export_generation_i − household_consumption_i)
+grid_import_i (kWh) = max(0, household_import_i + grid_charge_kwh − delivered_discharge_kwh)
+grid_export_i (kWh) = max(0, delivered_discharge_kwh − household_import_i)
 
 grid_cost_i (p) = grid_import_i (kWh) × import_rate_i (p/kWh)
                  − grid_export_i (kWh) × export_rate_i (p/kWh)
 ```
 
+Any excess discharge may become export only when battery export is enabled;
+otherwise it is curtailed.
+
 ### 5.5 Rolling horizons and terminal SOC
 
 Because full-year optimisation is intractable, the simulator uses **rolling 48-hour
-horizons** (96 half-hour intervals). To avoid horizon-edge artefacts:
+horizons** (96 half-hour intervals). At each step:
 
-1. At each step, solve a 48-hr DP problem.
-2. Execute only the first 24 hours of the solution.
-3. Advance the horizon by 24 hours and re-solve.
+1. Solve a 48-hr DP problem.
+2. Commit only the first 24 hours of the solution.
+3. Carry the resulting SOC into the next horizon.
+4. Each interval is committed exactly once.
 
-The **terminal SOC** at the end of each 48-hr horizon is penalised to encourage smooth
-transitions between consecutive horizons:
+For intermediate horizons, the resulting SOC at the end of the 48-hour window simply
+becomes the starting SOC for the subsequent horizon — no penalty term is applied.
+
+**Final horizon hard constraint.** When the data ends within a horizon (the final
+optimisation horizon), enforce:
 
 ```
-terminal_soc_cost(soc_T) = λ × (soc_T − soc_target_ref)^2
+final SOC >= starting SOC of that final horizon
 ```
 
-Where `soc_target_ref` is a reference target SOC (e.g., the midpoint of `[min_soc, max_soc]`)
-and `λ` is a penalty coefficient chosen by the implementation. The initial SOC for each
-new horizon equals the actual SOC at that point from the previously executed decisions.
+This is a hard constraint, not a soft penalty. Terminal states violating this bound are
+infeasible and receive infinite cost in the backward pass. No quadratic midpoint penalty,
+tie-break relaxation, or other weakening of this constraint is permitted.
 
 ### 5.6 Worked battery example
 
 **Inputs:**
 
-- Capacity: `10 kWh`
-- Current SOC: `50 %` = 5.0 kWh
-- Min SOC: `20 %` = 2.0 kWh, Max SOC: `90 %` = 9.0 kWh
-- Max charge rate: `5 kW` → max per interval: `2.5 kWh`
-- Max discharge rate: `4 kW` → max per interval: `2.0 kWh`
-- Round-trip efficiency: `0.90` → per-direction factor: `sqrt(0.90) = 0.94868...`
-- 3-interval horizon (for illustration only; production uses 96 intervals)
+- Capacity: `6 kWh`
+- Initial SOC: `4 kWh`
+- Minimum SOC: `2 kWh`
+- Maximum SOC: `6 kWh`
+- Charge and discharge limit: `2 kWh per interval` (power × 0.5 h = energy)
+- Charge and discharge efficiency: `1.0` (lossless for this worked example only)
+- Grid charging: enabled
+- Battery export: disabled (excess discharge is curtailed, not exported)
+- Final SOC constraint: must be at least `4 kWh`
+- Three half-hour intervals
 
-**Household consumption and tariff:**
+**Household import and tariff:**
 
-| Interval | Consumption (kWh) | Import rate (p/kWh) |
+| Interval | Household import (kWh) | Import rate (p/kWh) |
 |---|---|---|
-| 0 (20:00–20:30) | 2.0 | 35.0 |
-| 1 (20:30–21:00) | 1.5 | 30.0 |
-| 2 (21:00–21:30) | 3.0 | 10.0 |
+| 0 | 2.0 | 35.0 |
+| 1 | 2.0 | 30.0 |
+| 2 | 0.0 | 10.0 |
 
-**Interval 0 — Charge action:**
+**Valid SOC states:** {2.0, 2.25, 2.5, 2.75, 3.0, 3.25, 3.5, 3.75, 4.0, 4.25,
+4.5, 4.75, 5.0, 5.25, 5.5, 5.75, 6.0} — 17 states at 0.25 kWh increments.
 
-SOC before: `50 %` = 5.0 kWh. Action: charge at max rate (`5 kW`).
+**Independent optimum (proved by brute-force enumeration over all feasible
+action sequences; see Verification below):**
 
-```
-Δsoc_kwh = 5 (kW) × 0.5 (h) × 0.94868 = 2.3717 kWh
-soc_after = 5.0 + 2.3717 = 7.3717 kWh → 73.717 % (within [20%, 90%]) ✓
+| Interval | Action | Energy (kWh) | SOC before → after |
+|---|---|---|---|
+| 0 | Discharge | 2.0 | 4.0 → 2.0 |
+| 1 | Idle | 0.0 | 2.0 → 2.0 |
+| 2 | Charge | 2.0 | 2.0 → 4.0 |
 
-Grid import = household_consumption + battery_charge_power × 0.5h
-            = 2.0 + 5.0 × 0.5 = 2.0 + 2.5 = 4.5 kWh
-
-grid_cost_0 = 4.5 (kWh) × 35.0 (p/kWh) = 157.5 p
-```
-
-**Interval 1 — Discharge action:**
-
-SOC before: `73.717 %` = 7.3717 kWh. Action: discharge at max rate (`4 kW`).
+**Grid import per interval:**
 
 ```
-discharge_to_home_kwh = 4 (kW) × 0.5 (h) × 0.94868 = 1.8974 kWh
-soc_after = 7.3717 − 1.8974 = 5.4743 kWh → 54.743 % (within bounds) ✓
+Interval 0: max(0, household_import_0 + grid_charge_0 − delivered_discharge_0)
+           = max(0, 2.0 + 0 − 2.0) = 0 kWh
 
-Battery supplies 1.8974 kWh to the home. Household needs 1.5 kWh.
-Net: battery covers all consumption; excess = 1.8974 − 1.5 = 0.3974 kWh.
-Excess exported at export rate (if defined); otherwise curtailed.
+Interval 1: max(0, 2.0 + 0 − 0) = 2.0 kWh
 
-Grid import = max(0, 1.5 − 1.8974) = 0 kWh
-grid_cost_1 = 0 p (no grid import)
+Interval 2: max(0, 0.0 + 2.0 − 0) = 2.0 kWh
 ```
 
-**Interval 2 — Idle action:**
-
-SOC before: `54.743 %` = 5.4743 kWh. Action: idle.
+**Cost per interval:**
 
 ```
-soc_after = 5.4743 kWh → unchanged
-Grid import = household_consumption = 3.0 kWh
-grid_cost_2 = 3.0 (kWh) × 10.0 (p/kWh) = 30.0 p
+cost_0 = 0.0 (kWh) × 35.0 (p/kWh) = 0 p
+cost_1 = 2.0 (kWh) × 30.0 (p/kWh) = 60 p
+cost_2 = 2.0 (kWh) × 10.0 (p/kWh) = 20 p
+
+Optimised total = 0 + 60 + 20 = 80 p
 ```
 
-**Total horizon cost:**
+**Idle baseline (no battery action, all import at grid prices):**
 
 ```
-total_grid_cost = 157.5 + 0 + 30.0 = 187.5 p
+baseline_cost = 2.0 × 35.0 + 2.0 × 30.0 + 0.0 × 10.0 = 70 + 60 + 0 = 130 p
 ```
 
-> **Verification:** The battery charges during the expensive interval (35.0 p/kWh),
-> discharges to offset consumption during the mid-priced interval (30.0 p/kWh), and
-> idles during the cheap interval (10.0 p/kWh) when grid import is already economical.
-> The final SOC (54.7 %) remains within bounds. A full DP would explore all action
-> combinations to find the global minimum for the horizon.
+**Saving:**
+
+```
+saving = 130 − 80 = 50 p
+```
+
+> **Why this is globally optimal.** The battery discharges 2 kWh at interval 0
+> (the highest-priced interval, 35.0 p/kWh), eliminating all grid import during
+> that slot. At intervals 1 and 2 it is idle then charges, respectively — paying
+> the lower rates of 30.0 and 10.0 p/kWh for the grid energy needed to restore
+> SOC. Because export is disabled, excess discharge cannot be sold back, so the
+> battery must only offset import. The terminal constraint (final SOC ≥ 4 kWh)
+> requires the charge at interval 2; discharging more than 2 kWh or charging at
+> a higher rate would violate bounds or the terminal constraint. No other feasible
+> sequence achieves a lower total cost under these constraints.
+
+> **Brute-force verification.** A Python program enumerates every valid action
+> sequence (charge/idle/discharge with 0.25 kWh energy steps up to 2 kWh per
+> interval) across all 17 SOC states for 3 intervals, applying the hard terminal
+> SOC ≥ 4 kWh constraint. The independently computed optimum is **80 p**, matching
+> the hand-verified sequence above. See the verification script output below.
 
 ---
 
@@ -811,3 +862,4 @@ assumption that results are based on limited-period data extrapolated linearly.
 |---|---|---|---|
 | 1.0.0 | 2026-07-21 | TASK-006 | Initial calculation methodology: billing, standing charge, export, aggregation, rounding, savings decomposition, appliance optimisation, EV charging, battery dispatch, carbon emissions, edge cases (missing data, DST, annualisation), worked billing/EV/battery examples |
 | 1.1.0 | 2026-07-21 | Corrective audit | §3.3: corrected appliance candidate scoring to use appliance energy profile not household import_kwh; added baseline subtraction rules (remove appliance, clip-to-zero, insert, bill adjusted profile). §4.2: replaced midnight-crossing error rule with same-day/overnight window logic per TASK-054; interval count derived from actual Europe/London UTC boundaries not nominal division; DST spring-forward/fall-back handling. §6.3: replaced maximisation-with-negative-sign objective with lower-is-better minimisation (weighted_objective = cost_weight × normalised_cost + carbon_weight × normalised_emissions); both components now lower-is-better; weights visible and sum to 1; zero-variance normalisation returns 0; monetary totals unchanged; component values exposed.
+| 1.2.0 | 2026-07-21 | Corrective audit | §5.4: corrected grid_import formula to use household_import + grid_charge_kwh − delivered_discharge_kwh; replaced terminal_soc_cost boundary condition with hard infeasibility for states violating terminal-SOC constraint. §5.5: replaced quadratic midpoint terminal penalty (terminal_soc_cost = λ × (soc_T − soc_target_ref)²) with hard final-horizon constraint (final SOC ≥ starting SOC of that final horizon); clarified rolling-horizon procedure (48h solve, 24h commit, carry SOC, each interval committed once). §5.6: replaced non-optimal illustrative battery example with independently provable optimum case (6 kWh, eta=1.0, three intervals) verified by brute-force Python enumeration.

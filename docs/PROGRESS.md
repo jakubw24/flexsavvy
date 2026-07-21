@@ -16,7 +16,7 @@ TASK-007 is next.
 | TASK-003 | Validate the fresh-start baseline | 2026-07-20 | Verified clean state: no legacy code, all 114 task files present, governance consistent, links resolve; created PROJECT_BASELINE.md; marked task DONE in index |
 | TASK-004 | Create product specification | 2026-07-20 | Created docs/PRODUCT_SPEC.md with users, JTBD, positioning, scope, journey, outputs, confidence labels, terminology, non-goals; verified output coverage and non-goal testability; marked task DONE in index. **Key decisions:** (1) standing charge applied per calendar day across full analysis span — matching UK supplier practice — even on days with missing data; (2) export income included via `current_net_cost` when both export data and an export rate are available, otherwise treated as zero; (3) variable renamed from `current_cost` to `current_net_cost` throughout §5 formulas. See Known Risks below.
 | TASK-005 | Create canonical data schema | 2026-07-21 | Created docs/DATA_SCHEMA.md with consumption, quality, tariff (flat/TOU/dynamic), appliance, EV, battery, carbon, scenario and result models; nullability conventions distinguishing missing from measured zero; UTC start-inclusive/end-exclusive intervals; kWh and VAT-inclusive pence units; schema versioning rules; valid and invalid JSON examples; unit cross-reference table; field-to-source mapping table; runtime constraints. **Key decisions:** (1) schema v1.0.0 with semantic-versioned bumps for structural changes; (2) null = missing observation, 0 = measured zero — never conflated; (3) `schema_version` required on all data-carrying documents including exports; (4) derived fields (`utc_end`, `local_date`, `local_hour`) must not be independently edited after ingestion-time derivation. |
-| TASK-006 | Create calculation methodology | 2026-07-21 | Created docs/METHODOLOGY.md with billing formulas, standing charge, export income, net cost aggregation, rounding/precision rules, savings decomposition, appliance candidate generation/scoring/portfolio optimisation, EV energy requirement/allocation/unmet energy, battery SOC/actions/transitions/constraints/DP/rolling horizons/terminal SOC, carbon emissions and weighted scoring, edge cases (missing data, DST, annualisation); three worked examples (billing, EV, battery) independently verified by Python assertions. **Key decisions:** (1) intermediate values retain full precision; rounding only at presentation boundary (half-up to £0.01); (2) efficiency losses split as sqrt(round_trip_efficiency) per charge/discharge direction for battery; (3) rolling 48-hour horizons with terminal SOC penalty for smooth transitions; (4) annualisation uses 365.25 days/year with visible estimate assumption. |
+| TASK-006 | Create calculation methodology | 2026-07-21 | Created docs/METHODOLOGY.md with billing formulas, standing charge, export income, net cost aggregation, rounding/precision rules, savings decomposition, appliance candidate generation/scoring/portfolio optimisation, EV energy requirement/allocation/unmet energy, battery SOC/actions/transitions/constraints/DP/rolling horizons/terminal SOC, carbon emissions and weighted scoring, edge cases (missing data, DST, annualisation); three worked examples (billing, EV, battery) independently verified by Python assertions. **Key decisions:** (1) intermediate values retain full precision; rounding only at presentation boundary (half-up to £0.01); (2) efficiency losses split as sqrt(round_trip_efficiency) per charge/discharge direction for battery; (3) rolling 48-hour horizons with hard final-horizon SOC constraint (final SOC >= starting SOC), no quadratic penalty; (4) annualisation uses 365.25 days/year with visible estimate assumption. **Corrected 2026-07-21:** replaced quadratic midpoint terminal penalty with hard final-SOC constraint; corrected grid_import formula; replaced non-optimal battery worked example with independently provable optimum verified by brute-force enumeration. |
 
 ## Decisions
 
@@ -721,16 +721,54 @@ git status --short
 # M docs/METHODOLOGY.md
 ```
 
-## Known Risks
+## Corrective Audit — Task 6 Battery Methodology (2026-07-21)
 
-| Risk | Severity | Mitigation |
-|------|----------|------------|
-| DST boundary handling in half-hour intervals | High | TASK-022, TASK-023 will address explicitly |
-| Privacy compliance for smart-meter data | Critical | private-data/ directory enforced via .gitignore; privacy design in TASK-007 |
-| Tariff adapter correctness | Critical | Fixture-only tests mandated by AGENTS.md |
-| Standing charge model assumption — calendar span vs. days with data | Medium | Choice recorded in TASK-004 notes and §5.1 of PRODUCT_SPEC.md; may need review during QA if test households have sparse data across long date ranges |
-| Export income omission for suppliers without export rates | Low | Defaulted to zero per §5.1; impact documented in terminology table and PROGRESS.md; formalised in docs/METHODOLOGY.md §1.3 (TASK-006) |
+**Trigger**: Review of `docs/METHODOLOGY.md` §5 against TASK-058 (SOC discretisation) and TASK-062 (terminal SOC, rolling horizons) requirements revealed three battery-specific defects.
+
+**Defects corrected:**
+
+| # | Section | Defect | Correction |
+|---|---------|--------|------------|
+| 1 | §5.4 | `grid_import_i` formula used `household_consumption_i − battery_discharge_i + battery_charge_i` — subtracted discharge and added charge, inconsistent with the grid-side convention defined in §5.2. Terminal boundary used soft `terminal_soc_cost(soc)` quadratic penalty. | Replaced with `max(0, household_import_i + grid_charge_kwh − delivered_discharge_kwh)` to match the grid-import definition from §5.2. Export: `max(0, delivered_discharge_kwh − household_import_i)`. Added note that excess discharge is curtailed when export disabled. Terminal boundary condition now enforces hard infeasibility for states violating terminal-SOC constraint. |
+| 2 | §5.5 | Rolling-horizon procedure described only "execute first 24h, advance by 24h" without specifying carry-SOC or per-interval commit semantics. Terminal SOC used quadratic penalty `λ × (soc_T − soc_target_ref)²` with midpoint reference — this is a soft penalty that can be gamed by discharging into the horizon edge. | Replaced with deterministic procedure: (1) solve 48h, (2) commit first 24h, (3) carry resulting SOC to next horizon, (4) each interval committed exactly once. Final horizon enforces hard constraint `final SOC >= starting SOC of that final horizon`. No quadratic penalty, no tie-break relaxation. |
+| 3 | §5.6 | Worked example was illustrative only — the chosen action sequence (charge at expensive interval, discharge at mid-priced) could not be independently verified as optimal; efficiency losses obscured the cost calculation; final SOC drifted without a stated terminal constraint. | Replaced with a provably optimal case: 6 kWh battery, eta=1.0, three intervals, household import [2, 2, 0], rates [35, 30, 10]. Optimum is discharge-2 / idle / charge-2 yielding 80 p (baseline 130 p, saving 50 p). Independently verified by brute-force Python enumeration over all 17 SOC states × 17 action choices per interval (4913 sequences), 1545 feasible after terminal-SOC constraint. |
+
+**Files changed:** `docs/METHODOLOGY.md` (§5.4, §5.5, §5.6, Appendix A v1.2.0).
+
+**Commands actually run:**
+
+```bash
+python3 verify_battery.py
+# Valid SOC states (17): [2.0, 2.25, ..., 6.0]
+# Actions per interval: 17
+# Feasible sequences: 1545
+# Best cost: 80.0 p
+# Optimal sequence:
+#   Interval 0: Discharge 2.00 kWh | SOC 4.00 → 2.00 kWh | Grid import: 0.0 kWh | Cost: 0.0 p
+#   Interval 1: Idle 0.00 kWh      | SOC 2.00 → 2.00 kWh | Grid import: 2.0 kWh | Cost: 60.0 p
+#   Interval 2: Charge 2.00 kWh    | SOC 2.00 → 4.00 kWh | Grid import: 2.0 kWh | Cost: 20.0 p
+# Final SOC: 4.0 kWh (constraint: >= 4.0 kWh)
+# Idle baseline cost: 130.0 p
+# Saving: 50.0 p
+# ✓ All assertions passed
+
+python3 verify_examples.py
+# §1.6 Billing: net_cost=417.9 p, display £4.18 ✓
+# §4.5 EV: energy_from_grid=31.578947 kWh, cost=378.9474 p, naive=432.2368 p, saving=53.2895 p ✓
+# §5.6 Battery: optimal=80.0 p, baseline=130.0 p, saving=50.0 p ✓
+# ALL THREE WORKED EXAMPLES VERIFIED SUCCESSFULLY
+
+python3 -c "<rg-equivalent pattern check for obsolete battery methodology>"
+# Confirmed no N_levels, soc_step, terminal_soc_cost (as penalty), or quadratic midpoint patterns remain
+# Remaining matches are expected: 0.25 kWh references in §5.1/§5.2, final SOC constraint in §5.5,
+# hard infeasibility wording, worked battery example, revision history entry.
+```
+
+**Post-task state:**
+- `docs/METHODOLOGY.md` updated with corrected battery methodology (v1.2.0).
+- No application code introduced.
+- TASK-006 remains DONE.
 
 ## Next Task
 
-TASK-006 — Create calculation methodology
+TASK-007 — Create privacy design
