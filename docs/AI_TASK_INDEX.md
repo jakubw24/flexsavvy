@@ -12,7 +12,7 @@ Status values: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED`.
 | [004](ai-tasks/TASK-004.md) | DONE | 1 — Product documentation | Create product specification | 003 | `none` | high |
 | [005](ai-tasks/TASK-005.md) | DONE | 1 — Product documentation | Create canonical data schema | 004 | `none` | critical |
 | [006](ai-tasks/TASK-006.md) | DONE | 1 — Product documentation | Create calculation methodology | 004, 005 | `none` | critical |
-| [007](ai-tasks/TASK-007.md) | TODO | 1 — Product documentation | Create privacy design | 004, 005 | `none` | critical |
+| [007](ai-tasks/TASK-007.md) | DONE | 1 — Product documentation | Create privacy design | 004, 005 | `none` | critical |
 | [008](ai-tasks/TASK-008.md) | TODO | 1 — Product documentation | Documentation traceability audit | 004, 005, 006, 007 | `none` | high |
 | [009](ai-tasks/TASK-009.md) | TODO | 2 — Application foundation | Bootstrap or verify static Astro and React application | 008 | `packages` | high |
 | [010](ai-tasks/TASK-010.md) | TODO | 2 — Application foundation | Configure strict TypeScript and repository scripts | 009 | `packages` | medium |

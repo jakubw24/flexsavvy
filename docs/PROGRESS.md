@@ -2,10 +2,10 @@
 
 ## Project State
 
-Tasks 001 through 006 are complete.
-Product documentation now includes docs/PRODUCT_SPEC.md, docs/DATA_SCHEMA.md, and docs/METHODOLOGY.md.
+Tasks 001 through 007 are complete.
+Product documentation now includes docs/PRODUCT_SPEC.md, docs/DATA_SCHEMA.md, docs/METHODOLOGY.md, and docs/PRIVACY_DESIGN.md.
 No application code, no package manifest, no build output.
-TASK-007 is next.
+TASK-008 is next.
 
 ## Completed Tasks
 
@@ -17,6 +17,7 @@ TASK-007 is next.
 | TASK-004 | Create product specification | 2026-07-20 | Created docs/PRODUCT_SPEC.md with users, JTBD, positioning, scope, journey, outputs, confidence labels, terminology, non-goals; verified output coverage and non-goal testability; marked task DONE in index. **Key decisions:** (1) standing charge applied per calendar day across full analysis span — matching UK supplier practice — even on days with missing data; (2) export income included via `current_net_cost` when both export data and an export rate are available, otherwise treated as zero; (3) variable renamed from `current_cost` to `current_net_cost` throughout §5 formulas. See Known Risks below.
 | TASK-005 | Create canonical data schema | 2026-07-21 | Created docs/DATA_SCHEMA.md with consumption, quality, tariff (flat/TOU/dynamic), appliance, EV, battery, carbon, scenario and result models; nullability conventions distinguishing missing from measured zero; UTC start-inclusive/end-exclusive intervals; kWh and VAT-inclusive pence units; schema versioning rules; valid and invalid JSON examples; unit cross-reference table; field-to-source mapping table; runtime constraints. **Key decisions:** (1) schema v1.0.0 with semantic-versioned bumps for structural changes; (2) null = missing observation, 0 = measured zero — never conflated; (3) `schema_version` required on all data-carrying documents including exports; (4) derived fields (`utc_end`, `local_date`, `local_hour`) must not be independently edited after ingestion-time derivation. |
 | TASK-006 | Create calculation methodology | 2026-07-21 | Created docs/METHODOLOGY.md with billing formulas, standing charge, export income, net cost aggregation, rounding/precision rules, savings decomposition, appliance candidate generation/scoring/portfolio optimisation, EV energy requirement/allocation/unmet energy, battery SOC/actions/transitions/constraints/DP/rolling horizons/terminal SOC, carbon emissions and weighted scoring, edge cases (missing data, DST, annualisation); three worked examples (billing, EV, battery) independently verified by Python assertions. **Key decisions:** (1) intermediate values retain full precision; rounding only at presentation boundary (half-up to £0.01); (2) efficiency losses split as sqrt(round_trip_efficiency) per charge/discharge direction for battery; (3) rolling 48-hour horizons with hard final-horizon SOC constraint (final SOC >= starting SOC), no quadratic penalty; (4) annualisation uses 365.25 days/year with visible estimate assumption. **Corrected 2026-07-21:** replaced quadratic midpoint terminal penalty with hard final-SOC constraint; corrected grid_import formula; replaced non-optimal battery worked example with independently provable optimum verified by brute-force enumeration. |
+| TASK-007 | Create privacy design | 2026-07-21 | Created docs/PRIVACY_DESIGN.md with four-tier data classification (SHD, CD, PRD, TCS), permitted and forbidden outbound requests, forbidden fields in network requests, memory lifecycle with deletion mechanism, storage restrictions table, analytics policy, public-data cache boundary, connected-data out-of-scope statement, browser network test strategy (interception, payload, storage tests), threat model covering telemetry, logs, scripts, exports. Cross-checked against PRODUCT_SPEC.md non-goals NG-001/NG-003/NG-009 and DATA_SCHEMA.md data types. **Key decisions:** (1) SHD never leaves browser except user-initiated download; (2) all storage mechanisms have explicit SHD prohibition with exceptions only for CD (localStorage UI prefs) and PRD (IndexedDB/Service Worker cache); (3) public alpha has zero runtime network calls beyond site asset loading — PRD fetched at build time and committed as fixtures; (4) no legal conclusions provided, engineering specification only.
 
 ## Decisions
 
@@ -823,6 +824,49 @@ No active contradictions found.
 | TASK-004 | DONE |
 | TASK-005 | DONE |
 | TASK-006 | DONE |
-| TASK-007 | TODO (next) |
+| TASK-007 | DONE |
 
-**Conclusion: Tasks 001-006 pass all stated requirements. Repository is ready for Task 007.**
+**Conclusion: Tasks 001-007 pass all stated requirements. Repository is ready for Task 008.**
+
+### TASK-007 commands (2026-07-21)
+
+```bash
+$ GIT_PAGER=cat git diff --check
+EXIT_CODE=0
+(exit code 0 — no whitespace or conflict-marker errors)
+
+$ git status --short
+?? docs/PRIVACY_DESIGN.md
+(new untracked file only; working tree clean before this task)
+```
+
+#### Cross-check verification
+
+A Python cross-reference script compared PRIVACY_DESIGN.md against PRODUCT_SPEC.md and DATA_SCHEMA.md:
+
+| Check | Result |
+|---|---|
+| NG-001 browser-only processing covered | PASS |
+| NG-003 no third-party scripts covered | PASS |
+| NG-009 no localStorage SHD covered | PASS |
+| Null vs zero distinction referenced | PASS |
+| UTC/Europe-London convention aligned | PASS |
+| All data types (consumption, tariff, appliance, EV, battery, carbon) classified | PASS |
+| All SHD fields listed as forbidden in network requests | PASS |
+| Threat model covers telemetry, logs, scripts, exports | PASS |
+| Memory lifecycle defined with deletion mechanism | PASS |
+| Public-data cache boundary defined | PASS |
+
+#### Assumptions
+
+1. The Python cross-reference script validated textual presence of required concepts (non-goal IDs, data-type names, field categories) but did not execute a formal semantic equivalence proof — manual reading confirmed coverage.
+2. No application code exists yet; all privacy enforcement is architectural (documentation). Runtime enforcement depends on downstream implementation tasks honouring this specification.
+3. The "fixture-only" policy for public alpha means PRD is pre-baked at build time. If a future release adds live PRD fetching, §2.2 conditional permissions must be revisited.
+4. Browser extensions that can read page content are acknowledged as an unmitigable threat (§8.1); user education is the only feasible countermeasure.
+
+#### Remaining risks
+
+1. **Service Worker misconfiguration**: If a future developer adds SW caching without following §5 namespace separation, SHD could leak into persistent cache. Mitigated by TASK-092 (persistence audit) and TASK-094 (final privacy audit).
+2. **Dependency supply-chain telemetry**: Installed JS packages could introduce hidden network calls. Mitigated by dependency audit at TASK-013 (CI grep gate) but requires ongoing vigilance as packages are added.
+3. **Export schema drift**: If export code adds fields not declared in DATA_SCHEMA.md §8, unintended data leakage could occur. Mitigated by TASK-086–TASK-089 (export audit).
+4. **Console.log leakage in production**: Debug logging containing SHD could appear in user DevTools. Mitigated by TASK-013 CI lint rule and build-time log stripping.
