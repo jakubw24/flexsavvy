@@ -10,7 +10,7 @@ Status values: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED`.
 | [002](ai-tasks/TASK-002.md) | DONE | 0 — Fresh start initialization | Establish project governance and source-of-truth structure | 001 | `none` | low |
 | [003](ai-tasks/TASK-003.md) | DONE | 0 — Fresh start initialization | Validate the fresh-start baseline | 001, 002 | `none` | low |
 | [004](ai-tasks/TASK-004.md) | DONE | 1 — Product documentation | Create product specification | 003 | `none` | high |
-| [005](ai-tasks/TASK-005.md) | TODO | 1 — Product documentation | Create canonical data schema | 004 | `none` | critical |
+| [005](ai-tasks/TASK-005.md) | DONE | 1 — Product documentation | Create canonical data schema | 004 | `none` | critical |
 | [006](ai-tasks/TASK-006.md) | TODO | 1 — Product documentation | Create calculation methodology | 004, 005 | `none` | critical |
 | [007](ai-tasks/TASK-007.md) | TODO | 1 — Product documentation | Create privacy design | 004, 005 | `none` | critical |
 | [008](ai-tasks/TASK-008.md) | TODO | 1 — Product documentation | Documentation traceability audit | 004, 005, 006, 007 | `none` | high |
