@@ -772,3 +772,57 @@ python3 -c "<rg-equivalent pattern check for obsolete battery methodology>"
 ## Next Task
 
 TASK-007 — Create privacy design
+
+
+## Final Readiness Audit — Tasks 001-006 (2026-07-21)
+
+Independent verification that Tasks 001 through 006 satisfy their own stated requirements and are ready for Task 007.
+
+### Task-by-task verdict
+
+| Task | Verdict | Key checks |
+|------|---------|------------|
+| TASK-001 | PASS | Git repo on main; .gitignore covers Node/Astro/test/env/editor/logs/private-data; README.md states fresh-start/privacy-first/static simulator; private-data/README.md present; no application code or package.json |
+| TASK-002 | PASS | REPOSITORY_CONVENTIONS.md, QUALITY_GATES.md, EXTERNAL_DATA_POLICY.md all exist; ADR-001 through ADR-004 in DECISIONS.md cover static/browser-only/UTC/governance decisions; governance links in README |
+| TASK-003 | PASS | PROJECT_BASELINE.md present; all 114 task files verified (TASK-001..TASK-114); governance documents internally consistent; no legacy code or inherited history |
+| TASK-004 | PASS | PRODUCT_SPEC.md defines all outputs (sections 5.1-5.14); 10 non-goals each with testable criterion; empty-state semantics in section 5.14 have 4 deterministic cases aligned with METHODOLOGY section 2.6 table |
+| TASK-005 | PASS | DATA_SCHEMA.md defines all required models (sections 3-9); UTC/EL derivations documented (sections 2.1, 3.1); start-inclusive/end-exclusive intervals; kWh and VAT-inclusive pence units explicit; null vs zero convention (section 2.3); 10 JSON examples all parse; negative dynamic prices permitted (section 5.4); named saving fields present; Warning union fully defined with 4 scopes; SimulationResultSet has collection rules |
+| TASK-006 | PASS | METHODOLOGY.md formulas all include units; billing/export/standing charge/aggregation/rounding defined (section 1); savings decomposition complete (section 2); appliance scoring uses appliance energy not household import (section 3.3); overnight EV windows correctly defined (section 4.2); DST 46/50 intervals (section 7.2); weighted cost-carbon minimises lower values (section 6.3); battery SOC 0.25 kWh increments; efficiency sqrt split; no simultaneous charge/discharge; rolling 48h/commit 24h defined; final SOC >= starting SOC hard constraint; all 3 worked examples independently verified |
+
+### Automated verification results
+
+| Check | Result |
+|-------|--------|
+| JSON parsing (10 blocks in DATA_SCHEMA.md) | PASS: All parse |
+| Europe/London Spring 2025 DST: 46 intervals | PASS: Verified via zoneinfo |
+| Europe/London Fall 2025 DST: 50 intervals | PASS: Verified via zoneinfo |
+| Billing arithmetic (section 1.6): net=417.9p, display pounds 4.18 | PASS: Independently verified |
+| EV arithmetic (section 4.5): energy=30/0.95, cost approx 378.95p | PASS: Independently verified |
+| Battery arithmetic (section 5.6): optimal=80p, baseline=130p, saving=50p | PASS: Independently verified |
+| Task-file count: 114 files TASK-001..TASK-114 | PASS: All present |
+| No application source or package files | PASS: Confirmed |
+| Markdown relative-link checker | PASS: All resolve |
+| git status --short | PASS: Clean working tree |
+
+### Obsolete contradiction search results
+
+Pattern searched across PRODUCT_SPEC.md, DATA_SCHEMA.md, METHODOLOGY.md for obsolete patterns (combined scenarios require both, must not cross midnight, treated as an error, N_levels, terminal_soc_cost, midpoint, negative sign, maximising the weighted, all rates are non-negative, 2025-03-30T23:30:00Z):
+
+- METHODOLOGY.md:367 'treated as an error' - correct usage (overnight EV windows are valid and must never be treated as an error)
+- METHODOLOGY.md:665,865 'midpoint', 'terminal_soc_cost' - revision history documenting replaced content only
+
+No active contradictions found.
+
+### Task status confirmation
+
+| Task | Status in AI_TASK_INDEX.md |
+|------|---------------------------|
+| TASK-001 | DONE |
+| TASK-002 | DONE |
+| TASK-003 | DONE |
+| TASK-004 | DONE |
+| TASK-005 | DONE |
+| TASK-006 | DONE |
+| TASK-007 | TODO (next) |
+
+**Conclusion: Tasks 001-006 pass all stated requirements. Repository is ready for Task 007.**
