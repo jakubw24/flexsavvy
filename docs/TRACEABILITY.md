@@ -123,7 +123,7 @@ Every public output defined in PRODUCT_SPEC.md §5 is traced to:
 | Schema types | `ApplianceSchedule` (§9.1), `EVSchedule` (§9.2), `BatteryDispatchSchedule` (§9.3) |
 | Connection rules | DATA_SCHEMA §8.7 and §9.4 — appliance schedules always present (empty array when none configured); EV/battery absent when module unavailable |
 | Privacy class | SHD — household schedules (PRIVACY_DESIGN §1.1) |
-| Infeasibility | SCHEDULE_INFEASIBLE warning + schedule entry with null start and explanation |
+| Infeasibility | SCHEDULING_INFEASIBLE warning + schedule entry with null start and explanation |
 
 ### 1.9 Warnings (PRODUCT_SPEC §5.10)
 
