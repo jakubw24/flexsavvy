@@ -187,7 +187,7 @@ Every METHODOLOGY.md formula has at least one acceptance criterion that can be i
 | ER-014 | §2.6 | Empty-state: no candidates → no tariff-only or combined results | SimulationResultSet.tariff_only_results and .combined_results are empty/absent | Minimal scenario fixture |
 | ER-015 | §2.6 | Empty-state: no flexible loads → flexibility saving = 0 | FlexibilityOnlyResult.total_cost = CurrentResult.total_cost; saving_pence = 0; NO_FLEXIBLE_LOADS warning | No-appliance fixture |
 | ER-016 | §3.1 | Candidate positions within declared window only | Appliance with window 06:00–20:00 and 5h cycle produces start positions from 06:00 through 15:00 only | Single-appliance feasibility fixture |
-| ER-017 | §3.2 | Infeasible appliance → warning + excluded from optimisation | Window too narrow for cycle duration → SCHEDULING_INFEASIBLE warning, no schedule produced | Impossible window fixture |
+| ER-017 | §3.2 | Infeasible appliance → null-fields schedule entry + warning + excluded from optimisation | Given an appliance whose declared window cannot contain its full cycle, optimisation emits an ApplianceSchedule entry with recommended_utc_start = null, cycle_interval_count = null, satisfied_constraints = false and a non-empty infeasibility_reason. It also emits an OptimisationWarning with code SCHEDULING_INFEASIBLE referencing the appliance. The infeasible load is excluded from cost optimisation but is not omitted from result reporting. | Impossible window fixture: ApplianceSchedule with null start/intervals, satisfied_constraints = false, populated infeasibility_reason, and a matching OptimisationWarning(SCHEDULING_INFEASIBLE) present in the scenario warnings |
 | ER-018 | §3.3 | Appliance cost uses appliance energy profile (power × 0.5h), NOT household import_kwh | Candidate cost for 2.5 kW appliance over 5 intervals = 5×(2.5×0.5)×rate; differs from household interval sum | Appliance-isolated fixture |
 | ER-019 | §3.3 | Baseline subtraction clips to zero (never negative) | When appliance energy > observed import at an interval, adjusted baseline clamped to 0 | Edge case: high appliance/low consumption fixture |
 | ER-020 | §3.5 | Portfolio optimisation minimises joint cost | Multiple appliances optimised together produce lower cost than any single-appliance optimisation applied individually | Multi-appliance fixture |
@@ -385,7 +385,8 @@ Status of all Phase 1 documentation deliverables as of TASK-008 completion.
 **TASK-008 findings:**
 | Finding ID | Severity | Description | Resolution |
 |---|---|---|---|
-| None | — | No new contradictions identified during TASK-008 cross-document audit. All prior corrective audits resolved active issues. Terminology, units, timezone conventions, and scope classifications are consistent across all four documents. | N/A — audit passed |
+| F-001 | high | ER-017 stated "no schedule produced" for infeasible appliances, contradicting DATA_SCHEMA §8.7/§9.4 which require a null-fields ApplianceSchedule entry plus SCHEDULING_INFEASIBLE warning | Corrected ER-017: now specifies null recommended_utc_start, null cycle_interval_count, satisfied_constraints = false, populated infeasibility_reason, and OptimisationWarning(SCHEDULING_INFEASIBLE). Infeasible load excluded from optimisation but not omitted from reporting. |
+| None | — | Four repeated targeted audits (example consistency, timezone consistency, credential-policy consistency, infeasible schedule consistency) all pass after ER-017 correction. No additional contradictions remain. | N/A — re-audit passed |
 
 ---
 
@@ -394,3 +395,4 @@ Status of all Phase 1 documentation deliverables as of TASK-008 completion.
 | Version | Date | Task | Change |
 |---|---|---|---|
 | 1.0.0 | 2026-07-21 | TASK-008 | Initial traceability matrix: output-to-source mapping (§1), engine rule acceptance criteria table with 44 rules (§2), forbidden-field-to-test mapping (§3), terminology consistency audit (§4), unit consistency audit (§5), scope consistency audit (§6), implementation matrix update (§7), contradiction summary (§8) |
+| 1.1.0 | 2026-07-21 | TASK-008 corrective audit | Corrected ER-017 acceptance criterion: replaced "no schedule produced" with null-fields ApplianceSchedule entry specification matching DATA_SCHEMA §8.7/§9.4 (recommended_utc_start = null, cycle_interval_count = null, satisfied_constraints = false, populated infeasibility_reason, plus OptimisationWarning SCHEDULING_INFEASIBLE). Updated fixture description and contradiction summary (§8) to reflect F-001 finding and four repeated targeted audits.

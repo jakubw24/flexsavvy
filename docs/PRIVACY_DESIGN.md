@@ -105,7 +105,7 @@ These are standard page-load requests. No data is uploaded.
 
 | Request | Destination | Data sent | Contains SHD? | When permitted |
 |---|---|---|---|---|
-| Octopus tariff catalogue fetch | `api.octopus.energy` (or equivalent) | API key (non-SHD credential) only | No | Only during committed workflow build; not at browser runtime in public alpha |
+| Octopus tariff catalogue fetch | `api.octopus.energy` (or equivalent) | None — public endpoint, no authentication required | No | Only during committed workflow build; not at browser runtime in public alpha |
 | Carbon intensity data fetch | National Grid ESO public API | None | No | Only during committed workflow build; not at browser runtime in public alpha |
 
 **Rules:**
@@ -235,10 +235,13 @@ The "Clear my data" button (PRODUCT_SPEC.md §4, Step 11) must:
 
 When the Octopus catalogue or carbon data is refreshed:
 
-1. A CI/CD workflow (TASK-047) authenticates to the upstream API using a committed service credential (not an end-user key).
-2. Data is fetched, validated against schema expectations, and normalised.
-3. The result is committed as static JSON fixtures under `fixtures/` or equivalent.
-4. The application imports these fixtures at build time; no runtime network call to the upstream API occurs in alpha.
+1. A scheduled workflow contacts only the explicitly approved public API named by the relevant task. The currently approved tariff and carbon APIs require no end-user credentials. If an upstream service later requires a secret, it must be supplied through the repository host's encrypted secret store, must never be committed, and requires a dedicated policy and architectural review before use.
+2. The fetch occurs at build-time or CI-time — not in the browser at runtime. Only public reference data (PRD) is retrieved; no Sensitive Household Data (SHD) is included in the request.
+3. Data is fetched, validated against schema expectations, and normalised.
+4. The result is committed as static JSON fixtures under `fixtures/` or equivalent.
+5. Automated tests continue to use committed fixtures and remain offline. Live checks follow the task's declared network policy (`fixture-only` or `limited-live`).
+6. The application imports these fixtures at build time; no runtime network call to the upstream API occurs in alpha.
+7. No credentials are added to source, fixtures, environment examples, or documentation.
 
 ---
 
@@ -380,3 +383,4 @@ These tests are defined here but implemented in TASK-090 through TASK-094 (Priva
 | Version | Date | Task | Change |
 |---|---|---|---|
 | 1.0.0 | 2026-07-21 | TASK-007 | Initial privacy design: data classification (SHD/CD/PRD/TCS), permitted outbound requests, forbidden fields, memory lifecycle, storage restrictions, analytics policy, public-data cache boundary, connected-data out-of-scope statement, browser network test strategy, threat model for telemetry/logs/scripts/exports |
+| 1.0.1 | 2026-07-21 | TASK-007 corrective audit | Reconciled §2.2 Octopus row (removed "API key" wording — public endpoint requires no auth) and replaced §5.3 build-time fetch workflow with credential-safe policy matching EXTERNAL_DATA_POLICY.md: no committed credentials, no end-user keys, secrets must use encrypted secret store with dedicated review if ever needed |

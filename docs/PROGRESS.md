@@ -17,7 +17,7 @@ Environment: Node.js v22.23.1 via nvm, `.nvmrc` pinned to `22.23.1`, `engines.no
 | TASK-005 | Create canonical data schema | 2026-07-21 | Created docs/DATA_SCHEMA.md with consumption, quality, tariff (flat/TOU/dynamic), appliance, EV, battery, carbon, scenario and result models; nullability conventions distinguishing missing from measured zero; UTC start-inclusive/end-exclusive intervals; kWh and VAT-inclusive pence units; schema versioning rules; valid and invalid JSON examples; unit cross-reference table; field-to-source mapping table; runtime constraints. **Key decisions:** (1) schema v1.0.0 with semantic-versioned bumps for structural changes; (2) null = missing observation, 0 = measured zero — never conflated; (3) `schema_version` required on all data-carrying documents including exports; (4) derived fields (`utc_end`, `local_date`, `local_hour`) must not be independently edited after ingestion-time derivation. |
 | TASK-006 | Create calculation methodology | 2026-07-21 | Created docs/METHODOLOGY.md with billing formulas, standing charge, export income, net cost aggregation, rounding/precision rules, savings decomposition, appliance candidate generation/scoring/portfolio optimisation, EV energy requirement/allocation/unmet energy, battery SOC/actions/transitions/constraints/DP/rolling horizons/terminal SOC, carbon emissions and weighted scoring, edge cases (missing data, DST, annualisation); three worked examples (billing, EV, battery) independently verified by Python assertions. **Key decisions:** (1) intermediate values retain full precision; rounding only at presentation boundary (half-up to £0.01); (2) efficiency losses split as sqrt(round_trip_efficiency) per charge/discharge direction for battery; (3) rolling 48-hour horizons with hard final-horizon SOC constraint (final SOC >= starting SOC), no quadratic penalty; (4) annualisation uses 365.25 days/year with visible estimate assumption. **Corrected 2026-07-21:** replaced quadratic midpoint terminal penalty with hard final-SOC constraint; corrected grid_import formula; replaced non-optimal battery worked example with independently provable optimum verified by brute-force enumeration. |
 | TASK-007 | Create privacy design | 2026-07-21 | Created docs/PRIVACY_DESIGN.md with four-tier data classification (SHD, CD, PRD, TCS), permitted and forbidden outbound requests, forbidden fields in network requests, memory lifecycle with deletion mechanism, storage restrictions table, analytics policy, public-data cache boundary, connected-data out-of-scope statement, browser network test strategy (interception, payload, storage tests), threat model covering telemetry, logs, scripts, exports. Cross-checked against PRODUCT_SPEC.md non-goals NG-001/NG-003/NG-009 and DATA_SCHEMA.md data types. **Key decisions:** (1) SHD never leaves browser except user-initiated download; (2) all storage mechanisms have explicit SHD prohibition with exceptions only for CD (localStorage UI prefs) and PRD (IndexedDB/Service Worker cache); (3) public alpha has zero runtime network calls beyond site asset loading — PRD fetched at build time and committed as fixtures; (4) no legal conclusions provided, engineering specification only.
-| TASK-008 | Documentation traceability audit | 2026-07-21 | Created docs/TRACEABILITY.md with: (1) output-to-source traceability for all 11 PRODUCT_SPEC §5 outputs mapping to input fields, formulas, confidence handling, and privacy class; (2) 44 engine-rule acceptance criteria (ER-001 through ER-044) covering billing, savings decomposition, appliance/EV/battery optimisation, carbon, DST, and annualisation; (3) forbidden-field-to-privacy-test mapping for all 8 SHD categories against the three test types in PRIVACY_DESIGN §7; (4) terminology consistency audit across all four Phase-1 documents — no unresolved conflicts found; (5) unit consistency audit — all monetary intermediates use pence, energy uses kWh, rates use p/kWh with VAT; (6) scope consistency audit — all 10 public-alpha capabilities and 4 paid-ready items verified traceable; (7) non-goal verification — all 10 non-goals (NG-001 through NG-010) have testable criteria and enforcement paths; (8) implementation matrix update confirming all downstream task dependencies satisfied. **Audit result:** no new contradictions identified; all prior corrective audits had resolved active issues.
+| TASK-008 | Documentation traceability audit | 2026-07-21 | Created docs/TRACEABILITY.md with: (1) output-to-source traceability for all 11 PRODUCT_SPEC §5 outputs mapping to input fields, formulas, confidence handling, and privacy class; (2) 44 engine-rule acceptance criteria (ER-001 through ER-044) covering billing, savings decomposition, appliance/EV/battery optimisation, carbon, DST, and annualisation; (3) forbidden-field-to-privacy-test mapping for all 8 SHD categories against the three test types in PRIVACY_DESIGN §7; (4) terminology consistency audit across all four Phase-1 documents — no unresolved conflicts found; (5) unit consistency audit — all monetary intermediates use pence, energy uses kWh, rates use p/kWh with VAT; (6) scope consistency audit — all 10 public-alpha capabilities and 4 paid-ready items verified traceable; (7) non-goal verification — all 10 non-goals (NG-001 through NG-010) have testable criteria and enforcement paths; (8) implementation matrix update confirming all downstream task dependencies satisfied. **Audit result:** ER-017 corrected (F-001: replaced "no schedule produced" with canonical null-fields ApplianceSchedule specification matching DATA_SCHEMA §8.7/§9.4). Four repeated targeted audits pass post-correction. |
 | TASK-009 | Bootstrap or verify static Astro and React application | 2026-07-21 | Created package.json (Astro ^5.7.0, @astrojs/react ^4.2.0, React ^19.1.0, TypeScript ^5.8.0, Vitest ^3.2.0), astro.config.mjs (static output, react integration), tsconfig.json (strict, jsx react-jsx, @/* path alias), .nvmrc (22.23.1), vitest.config.ts, src/components/SimulatorApp.tsx (React FC with data-testid), src/pages/simulator/index.astro (client:load hydration; unused GetStaticPaths import removed), src/__tests__/build-smoke.test.ts (5 assertions). Empty src/lib/ directory removed (undocumented, no content). **Environment upgrade:** Installed nvm v0.40.3 project-locally (~/.config/nvm), installed Node.js v22.23.1 via `nvm install 22`, removed stale node_modules, ran `npm ci` from lockfile (362 packages). **Commands:** `npm run typecheck` PASS (exit 0), `npm run build` PASS — static output: 1 page (`/simulator/index.html`), 3 files in dist/ (`index.html`, `_astro/client.CpeL31wX.js` 194.63 kB, `_astro/SimulatorApp.RmRee2Zw.js` 0.95 kB), `npm run test` PASS — vitest v3.2.7, 1 test file, 5/5 assertions passed (2 ms), `git diff --check` clean (exit 0). **Node version:** System Node remains v18.19.1 untouched; all project commands run under nvm-managed v22.23.1.
 
 ## Decisions
@@ -910,3 +910,232 @@ A Python script confirmed all 4 Phase-1 source documents exist and are reference
 1. **Section-number drift**: If downstream tasks modify Phase-1 documents and renumber sections, TRACEABILITY.md citations may become stale. No automated link-checking for section numbers exists yet.
 2. **Missing acceptance criteria**: The 44 ER rules cover documented formulas, but implementation may reveal unmodelled edge cases (e.g., floating-point rounding interactions, DST boundary rate resolution). These would require corrective audits.
 3. **Privacy test mapping completeness**: Forbidden-field-to-test mapping references TASK-091 through TASK-094. If those tasks are re-scoped or cancelled, SHD fields could become untested. The dependency chain must be preserved.
+
+### Corrective Audit — TASK-005 DST Measured-Zero example (2026-07-21)
+
+**Trigger**: Review of `docs/DATA_SCHEMA.md` §10.2 "Valid Consumption Interval — Measured Zero" found an incorrect Europe/London derived `local_hour` value.
+
+**Defect**:
+The measured-zero example paired `"utc_start": "2025-03-30T04:00:00Z"` with `"local_hour": 4`. On 30 March 2025 Europe/London is already observing British Summer Time (BST, UTC+1), so 04:00 UTC = 05:00 BST. The correct value is `5`.
+
+**Change applied to docs/DATA_SCHEMA.md §10.2**:
+- JSON example: `"local_hour"` corrected from `4` to `5`.
+- Explanatory text updated to explicitly state that 04:00 UTC corresponds to 05:00 Europe/London (BST) on this date, hence `local_hour` is 5.
+
+**No other schema fields changed**: `utc_start`, `utc_end`, `import_kwh: 0`, `export_kwh: null`, and `local_date` are all correct and were preserved.
+
+**Verification commands and results**:
+```bash
+$ TZ=Europe/London date -d '2025-03-30 04:00:00 UTC' '+%Y-%m-%d %H:%M %Z'
+2025-03-30 05:00 BST
+(exit code 0 — confirms 04:00 UTC = 05:00 BST)
+
+$ python3 - JSON block validation (see prompt)
+Validated 10 JSON examples
+(exit code 0 — all JSON blocks parse successfully)
+
+$ git diff --check
+(no output — exit code 0, no whitespace or conflict-marker errors)
+
+$ python3 - Markdown relative-link verification (docs/QUALITY_GATES.md command, excluding node_modules)
+All relative Markdown links resolve OK.
+(exit code 0)
+```
+
+**Files changed**: `docs/DATA_SCHEMA.md` (§10.2 — 2 lines: one JSON field, one explanatory sentence), `docs/PROGRESS.md` (this entry).
+
+**Assumptions**:
+1. The canonical UTC timestamp (`2025-03-30T04:00:00Z`) and measured value (`import_kwh: 0`) are correct — only the derived `local_hour` was wrong.
+2. 2025-03-30 is well after the UK spring-forward transition (which occurs at 01:00 UTC on that date), so BST (UTC+1) is in effect for all times on that calendar day.
+
+**Remaining risks**: None identified. The correction is a single derived-field value with independent timezone verification.
+
+## Corrective Audit — TASK-006 Fall-back DST Descriptions (2026-07-21)
+
+**Trigger**: Review of `docs/METHODOLOGY.md` §4.2 and §7.2 revealed two technically inaccurate Europe/London fall-back DST descriptions.
+
+**Two defects corrected**:
+
+| # | Section | Incorrect Statement | Corrected Wording |
+|---|---------|---------------------|-------------------|
+| 1 | §4.2 (EV charging windows, fall-back bullet) | `On a fall-back day (last Sunday in October), 01:00 UTC occurs twice locally (as 01:00 GMT and again as 01:00 BST)` — implied UTC repeats; also mis-ordered the labels (said GMT then BST, but BST comes first before switching back to GMT) | `On a fall-back day (last Sunday in October), the local hour from 01:00 to 02:00 occurs twice: first in BST and then in GMT. The corresponding UTC intervals remain unique, so each half-hour slot has exactly one canonical UTC start timestamp.` |
+| 2 | §7.2 DST transition table — fall-back row | `(01:00 UTC → 00:00)` — incorrect mapping; suggested local time goes to midnight at the transition | `At 01:00 UTC, local time changes from 02:00 BST back to 01:00 GMT` |
+
+**Timezone verification output** (Python `zoneinfo`, Europe/London, 2025-10-26):
+
+```
+2025-10-26T00:00:00+00:00 -> 2025-10-26T01:00:00+01:00 BST
+2025-10-26T00:30:00+00:00 -> 2025-10-26T01:30:00+01:00 BST
+2025-10-26T01:00:00+00:00 -> 2025-10-26T01:00:00+00:00 GMT
+2025-10-26T01:30:00+00:00 -> 2025-10-26T01:30:00+00:00 GMT
+2025-10-26T02:00:00+00:00 -> 2025-10-26T02:00:00+00:00 GMT
+```
+
+This confirms:
+- Distinct UTC timestamps (each unique).
+- The local hour `01:00–01:59` appears once in BST (`00:00–00:30 UTC`) and again in GMT (`01:00–01:30 UTC`).
+- At `01:00 UTC`, the transition occurs from `02:00 BST` to `01:00 GMT` (the half-hour before was `01:30 BST`; at `01:00 UTC` it resets to `01:00 GMT`).
+
+**Link-check result**: All relative Markdown links resolve OK (exit code 0).
+
+**`git diff --check` result**: No output — exit code 0 (no whitespace or conflict-marker errors).
+
+**Consistency checks performed**:
+1. Internal timestamps remain UTC — confirmed; no change to UTC identity convention.
+2. Europe/London used for local schedules — preserved in all surrounding text.
+3. Fall-back days contain 50 half-hour intervals — preserved (the "50 intervals" conclusion remains intact).
+4. Ambiguous local times map to distinct UTC starts — now explicitly stated ("each half-hour slot has exactly one canonical UTC start timestamp").
+5. No assumption of 48 intervals per local date — rule §7.2 Rule 1 unchanged.
+6. No unrelated EV, battery, billing, optimisation, annualisation or carbon formulas changed — verified by `git diff` showing changes limited to §4.2 fall-back bullet and §7.2 table row only.
+7. grep for "01:00 UTC occurs twice", "UTC repeats", "occurs twice locally" returns zero matches — defect eliminated.
+
+**Files changed**: `docs/METHODOLOGY.md` (§4.2 lines 390–393, §7.2 line 832), `docs/PROGRESS.md` (this entry).
+
+**Assumptions**:
+1. The DST transition date used for verification (2025-10-26) is the correct Europe/London fall-back Sunday.
+2. Python `zoneinfo` data reflects the IANA tz database, which is authoritative for this transition.
+3. No other DST descriptions in METHODOLOGY.md were incorrect — only the two identified statements were changed.
+
+**Remaining risks**:
+1. The spring-forward description (`01:00 UTC → 02:00`) in §7.2 is abbreviated but technically correct (at 01:00 UTC, local time jumps from 01:00 GMT to 02:00 BST). It could be expanded for symmetry with the fall-back description, but this was not a stated defect and is left unchanged.
+2. TASK-006 remains `DONE` per governance — only documentation corrected, no task status change.
+
+## Corrective Audit — TASK-007 Credential-Policy Contradiction (2026-07-21)
+
+**Trigger**: Review of `docs/PRIVACY_DESIGN.md` §5.3 and §2.2 found wording that contradicts `docs/EXTERNAL_DATA_POLICY.md` concerning a supposedly committed service credential.
+
+**Contradiction identified**:
+1. **§2.2 conditionally-permitted table row** (Octopus tariff catalogue fetch): The "Data sent" column stated `API key (non-SHD credential) only`. This implies an API credential is required for the Octopus Energy public tariff API and would be transmitted with the request.
+2. **§5.3 build-time fetch workflow step 1**: `A CI/CD workflow (TASK-047) authenticates to the upstream API using a committed service credential (not an end-user key).` This explicitly states that a credential is committed to the repository.
+
+Both contradict EXTERNAL_DATA_POLICY.md which states:
+- The Octopus Energy public tariff API requires **no authentication** (§Allowed Public APIs table).
+- `No API credentials are stored in the repository, in environment variables checked into source control, or hardcoded.`
+- `FlexSavvy must never request, store, or transmit customer API credentials, OAuth tokens, supplier login details, or any authentication material tied to an individual user account.`
+
+**Replacement policy applied**:
+1. §2.2 Octopus row: replaced `API key (non-SHD credential) only` with `None — public endpoint, no authentication required`.
+2. §5.3 build-time fetch workflow: replaced the 4-step "committed service credential" procedure with a 7-step credential-safe policy:
+   - Step 1: contacts only the explicitly approved public API; current APIs require no credentials; if a future upstream requires a secret, it must use the encrypted secret store and requires dedicated review.
+   - Step 2: fetch occurs at build-time/CI-time, not browser runtime; only PRD retrieved; no SHD included.
+   - Steps 3–4: validation and fixture commit (preserved from original).
+   - Step 5: automated tests use committed fixtures offline; live checks follow declared network policy.
+   - Step 6: application imports fixtures at build time; no runtime API calls in alpha.
+   - Step 7: no credentials added to source, fixtures, environment examples, or documentation.
+3. Appendix B revision history: added version 1.0.1 entry documenting this corrective audit.
+
+**Files changed**: `docs/PRIVACY_DESIGN.md` (§2.2 table row, §5.3 build-time workflow, Appendix B revision history), `docs/PROGRESS.md` (this entry).
+
+**Repository credential-contradiction search results**:
+```
+grep -RniE 'committed service credential|committed credential|hardcoded credential|customer credential|end-user key' --exclude-dir=.git .
+# ./docs/PRIVACY_DESIGN.md:386 — revision history entry explicitly recording the correction (valid; it prohibits credentials)
+# ./docs/ai-tasks/TASK-002.md:46 — "no customer credentials" prohibition (valid; states a ban)
+# ./docs/EXTERNAL_DATA_POLICY.md:49 — "No Customer Credentials" section heading (valid; states a ban)
+# No contradictory instances remain.
+```
+
+**Broader credential keyword search results**:
+```
+grep -RniE 'api[_-]?key|token|secret|credential' docs README.md AGENTS.md MANUAL_ACTIONS.md
+# PRIVACY_DESIGN.md:238 — new step 1 referencing "no end-user credentials" and future secret-store requirement (valid; prohibition)
+# PRIVACY_DESIGN.md:244 — step 7 "No credentials are added to source..." (valid; prohibition)
+# PRIVACY_DESIGN.md:255 — out-of-scope table: smart-meter polling "Would require credentials" (valid; states a ban)
+# TASK-073.md:56 — "Do not request credentials" (valid; prohibition)
+# TASK-047.md:51 — "Audit no credentials/customer endpoints" (valid; prohibition)
+# TASK-002.md:46 — "no customer credentials" (valid; prohibition)
+# TASK-029.md:20 — "without credentials" (valid; states absence)
+# TASK-108.md:49 — "Embed no credentials" (valid; prohibition)
+# IMPLEMENTATION_PLAN.md:47 — "without credentials" (valid; states absence)
+# PROGRESS.md:425 — prior audit note about credential grep results (valid; historical evidence)
+# EXTERNAL_DATA_POLICY.md:39,49,51 — existing prohibitions (valid; unchanged)
+# All matches are prohibitions or descriptions of absence. No credentials present.
+```
+
+**Verification commands and actual results**:
+```bash
+git diff --check → no output (exit code 0 — no whitespace or conflict-marker errors)
+Markdown relative-link checker (docs/QUALITY_GATES.md) → All relative Markdown links resolve OK (exit code 0, excluding node_modules)
+```
+
+**Assumptions**:
+1. The Octopus Energy public tariff API and National Grid ESO carbon intensity API are genuinely public endpoints that do not require authentication under current usage. This is confirmed by EXTERNAL_DATA_POLICY.md §Allowed Public APIs table.
+2. No other files in the repository contain contradictory credential wording beyond PRIVACY_DESIGN.md §2.2 and §5.3, as verified by the grep searches above.
+3. TASK-007 remains `DONE` per governance — only documentation corrected, no task status change.
+
+**Remaining risks**:
+1. If Octopus Energy or National Grid ESO introduce authentication requirements in the future, this will be a decision gate requiring human review and a new ADR per EXTERNAL_DATA_POLICY.md §No Customer Credentials. The new §5.3 step 1 explicitly documents this requirement.
+2. Implementers reading the old version of §5.3 may have already designed a credential-handling workflow. Downstream tasks (TASK-047 especially) must be checked against the corrected policy before implementation.
+3. The "encrypted secret store" reference (step 1) names no specific platform (GitHub Actions Secrets, GitLab CI variables, etc.). This is intentional — platform selection is deferred to the relevant implementation task. It only establishes that any future secret must go through an approved secure channel and never be committed.
+
+## Corrective Audit — TASK-008 ER-017 Contradiction (2026-07-21)
+
+**Trigger**: Cross-document review of TRACEABILITY.md ER-017 acceptance criterion against DATA_SCHEMA.md §8.7/§9.4 revealed a contradiction: ER-017 stated "no schedule produced" for infeasible appliances, while DATA_SCHEMA requires emission of a null-fields ApplianceSchedule entry plus SCHEDULING_INFEASIBLE warning.
+
+**Contradiction identified**:
+1. **TRACEABILITY.md ER-017 (old)**: `Given an appliance whose declared window cannot contain its full cycle, no schedule produced.`
+2. **DATA_SCHEMA §8.7**: Requires ApplianceSchedule entry with `recommended_utc_start: null`, `cycle_interval_count: null`, `satisfied_constraints: false`, populated `infeasibility_reason`.
+3. **DATA_SCHEMA §9.4**: Requires corresponding OptimisationWarning with code `SCHEDULING_INFEASIBLE` referencing the affected appliance_id.
+
+**Correction applied**:
+1. ER-017 rewritten to specify: null recommended_utc_start, null cycle_interval_count, satisfied_constraints = false, populated infeasibility_reason, plus OptimisationWarning(SCHEDULING_INFEASIBLE). Infeasible load excluded from optimisation but retained in result reporting.
+2. Fixture description updated: "Impossible window fixture: ApplianceSchedule with null start/intervals, satisfied_constraints = false, populated infeasibility_reason, and a matching OptimisationWarning(SCHEDULING_INFEASIBLE) present in the scenario warnings."
+3. §8 Contradiction Summary updated with F-001 finding.
+4. Appendix A revision history updated to version 1.1.0.
+
+**Four repeated targeted audits** (all pass post-correction):
+
+### Re-audit 1: Example consistency in DATA_SCHEMA.md
+- Valid JSON examples checked for schema compliance (nullability, required fields, types).
+- Europe/London timezone fields verified (UTC start-inclusive/end-exclusive intervals, local_date/local_hour derivation).
+- **Result**: PASS — no schema violations found.
+
+### Re-audit 2: Timezone consistency
+- UTC uniqueness: confirmed all timestamps are canonical UTC.
+- BST→GMT fall-back at 01:00 UTC: verified (50 half-hour intervals, no "UTC repeats" claims).
+- Spring-forward: verified (46 half-hour intervals).
+- **Result**: PASS — consistent across METHODOLOGY §4.2/§7.2 and DATA_SCHEMA §8.
+
+### Re-audit 3: Credential-policy consistency
+- grep for "committed service credential", "hardcoded credential", etc.: only prohibitions found (TASK-007 correction active).
+- Public API endpoints: confirmed no user credentials required.
+- Future secrets: encrypted repo storage per EXTERNAL_DATA_POLICY.md.
+- **Result**: PASS — no contradictions remain.
+
+### Re-audit 4: Infeasible schedule consistency
+- PRODUCT_SPEC, DATA_SCHEMA, METHODOLOGY, TRACEABILITY alignment verified.
+- Exclusion from optimisation confirmed; visibility in results confirmed; warning emission confirmed.
+- **Result**: PASS — all four documents consistent post-correction.
+
+**Verification commands and actual results**:
+```bash
+# Grep for problematic patterns (infeasible schedule terms):
+grep -RniE 'no schedule produced' docs/PRODUCT_SPEC.md docs/DATA_SCHEMA.md docs/METHODOLOGY.md docs/TRACEABILITY.md
+# Result: No matches in source docs (only historical references in PROGRESS.md audit notes)
+
+grep -RniE 'SCHEDULING_INFEASIBLE|recommended_utc_start|infeasibility_reason|satisfied_constraints' docs/PRODUCT_SPEC.md docs/DATA_SCHEMA.md docs/METHODOLOGY.md docs/TRACEABILITY.md
+# Result: Matches found only in DATA_SCHEMA §8.7/§9.4 and TRACEABILITY ER-017 — all consistent
+
+# JSON validation for DATA_SCHEMA examples:
+python3 -c "import json; ..." (validates all fenced code blocks)
+# Result: PASS — all examples parse as valid JSON
+
+# Markdown link check (per QUALITY_GATES.md):
+python3 link_checker.py (excluding node_modules)
+# Result: All links OK. Checked 132 project markdown files.
+
+git diff --check
+# Result: No output — exit code 0 (no whitespace or conflict-marker errors)
+```
+
+**Files changed**: `docs/TRACEABILITY.md` (ER-017, §8 contradiction summary, Appendix A revision history), `docs/PROGRESS.md` (this entry, TASK-008 table row).
+
+**Assumptions**:
+1. DATA_SCHEMA §8.7/§9.4 are authoritative for infeasible appliance handling.
+2. No downstream implementation code has been written yet that would embed the old "no schedule produced" wording.
+3. The four targeted re-audits cover all known contradiction domains from TASK-005 through TASK-008.
+
+**Remaining risks**:
+1. Implementers must be aware that infeasible appliances emit null-field entries rather than being silently dropped — this affects result aggregation logic (counting, filtering).
+2. The SCHEDULING_INFEASIBLE warning code is specified as a string literal; implementers should treat it as an enum value for future extensibility.
+3. TASK-008 remains `DONE` per governance — only documentation corrected, no task status change.

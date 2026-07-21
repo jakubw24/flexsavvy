@@ -619,11 +619,11 @@ This represents a valid import observation of 0.45 kWh during the half-hour from
   "import_kwh": 0,
   "export_kwh": null,
   "local_date": "2025-03-30",
-  "local_hour": 4
+  "local_hour": 5
 }
 ```
 
-A measured zero is distinct from missing data. The meter actively reported 0 kWh for this interval.
+A measured zero is distinct from missing data. The meter actively reported 0 kWh for this interval. On 2025-03-30 the UK is observing British Summer Time (BST), so 04:00 UTC corresponds to 05:00 Europe/London, hence `local_hour` is 5.
 
 ### 10.3 Valid Flat Tariff
 

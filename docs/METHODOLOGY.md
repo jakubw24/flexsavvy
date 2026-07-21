@@ -387,9 +387,10 @@ time-zone rules in effect on each date. This means:
 - On a spring-forward day (last Sunday in March), 01:00–02:00 BST does not exist;
   any local half-hour slots that would fall in this gap are skipped, producing one
   fewer UTC interval than the nominal count would suggest.
-- On a fall-back day (last Sunday in October), 01:00 UTC occurs twice locally
-  (as 01:00 GMT and again as 01:00 BST). The window yields one extra UTC interval
-  compared to the nominal count.
+- On a fall-back day (last Sunday in October), the local hour from 01:00 to 02:00
+  occurs twice: first in BST and then in GMT. The corresponding UTC intervals remain
+  unique, so each half-hour slot has exactly one canonical UTC start timestamp.
+  The window yields one extra UTC interval compared to the nominal count.
 - These DST adjustments are required so that available intervals match actual UTC
   half-hour slots resolvable against tariff rates (see §7.2).
 
@@ -828,7 +829,7 @@ Europe/London has two DST transitions per year:
 | Transition | Direction | Effect on half-hour intervals |
 |---|---|---|
 | Last Sunday March (01:00 UTC → 02:00) | Spring forward | Local day has **46** intervals (not 48) |
-| Last Sunday October (01:00 UTC → 00:00) | Fall back | Local day has **50** intervals (not 48) |
+| Last Sunday October | Fall back | At 01:00 UTC, local time changes from 02:00 BST back to 01:00 GMT. Local day has **50** intervals (not 48) |
 
 Rules:
 1. Code must **never assume 48 intervals per local day**. Expected interval counts are
