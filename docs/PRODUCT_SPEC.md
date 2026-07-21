@@ -60,7 +60,7 @@ The public alpha release delivers:
 1. **Data import**
    - Upload CSV or JSON consumption exports (n3rgy, Octopus, generic half-hourly format).
    - Browser-only parsing and validation. No server upload.
-   - Data quality report showing expected vs. actual intervals, gaps, duplicates, and extreme values.
+   - Data quality report showing expected vs. actual intervals, gaps, duplicates, and statistical outliers.
 
 2. **Tariff definition**
    - Current tariff entry (flat or time-of-use with standing charges).
@@ -143,7 +143,7 @@ For file upload:
 1. User selects one or more files via standard `<input type="file">`.
 2. Files are read entirely in-browser via the File API. Maximum file size enforced client-side.
 3. If multiple meters are detected, user is asked to resolve which data set to use.
-4. A quality report displays: total intervals found, expected intervals, missing intervals, duplicates, extreme values, and an overall confidence level (High / Medium / Low).
+4. A quality report displays: total intervals found, expected intervals, missing intervals, duplicates, statistical outliers, and an overall confidence level (High / Medium / Low).
 
 ### Step 4: Current tariff configuration
 
@@ -175,10 +175,10 @@ If available, user configures:
 ### Step 8: Run simulation
 
 User clicks "Run". The Web Worker calculates:
-1. Current cost on the existing tariff.
-2. Cost under each candidate tariff (tariff-only).
-3. Optimal appliance schedules under the current tariff (flexibility-only). If the EV optimisation module is implemented and enabled, EV charging schedules are included. If the battery dispatch module is implemented and enabled, battery charge/discharge schedules are included. Appliance optimisation is always available within public-alpha scope; EV and battery results appear only when their respective paid-ready modules are active.
-4. Combined optimisation under each candidate tariff, applying the same module availability rules as step 3.
+1. Current cost on the existing tariff (always produced).
+2. Cost under each candidate tariff (tariff-only). Produced only when at least one candidate tariff has been configured (§5.14).
+3. Optimal appliance schedules under the current tariff (flexibility-only). If the EV optimisation module is implemented and enabled, EV charging schedules are included. If the battery dispatch module is implemented and enabled, battery charge/discharge schedules are included. Appliance optimisation is always available within public-alpha scope; EV and battery results appear only when their respective paid-ready modules are active. When no flexible loads are configured, the flexibility-only result equals current cost with saving of `0` and a visible informational assumption (§5.14).
+4. Combined optimisation under each candidate tariff, applying the same module availability rules as step 3. Produced when at least one candidate tariff is configured; when no flexible loads are also configured, the combined scenario equals the tariff-only scenario (see §5.14).
 
 Results display within seconds for typical monthly data sets.
 
@@ -190,7 +190,7 @@ User sees:
 - **Confidence**: per-scenario confidence level based on data quality and assumptions.
 - **Schedules**: specific recommended start times for each flexible appliance. EV charging profile appears only when the EV optimisation module is implemented and enabled. Battery charge/discharge timeline appears only when the battery dispatch module is implemented and enabled.
 - **Monthly view**: cost comparison bar chart across months or weeks.
-- **Warnings**: data gaps, extreme values, assumptions that may affect results.
+- **Warnings**: data gaps, statistical outliers, assumptions that may affect results.
 
 ### Step 10: Export / Print (optional)
 
@@ -231,9 +231,9 @@ current_net_cost =
 
 - All rates include VAT.
 - **Import cost**: calculated per interval using the user's actual import consumption and the tariff's import rate.
-- **Standing charges**: applied once per Europe/London calendar date spanning the analysis period (from the earliest to the latest interval timestamp), regardless of whether consumption data exists for that day. Missing consumption data does not remove the standing charge. *Rationale: this matches standard UK supplier billing practice, where standing charges accrue for every calendar day on the account, not only days with recorded usage.*
+- **Standing charges**: applied once per distinct Europe/London calendar date from the earliest interval's local date through the latest interval's local date, inclusive. Every date within that span receives exactly one standing charge regardless of whether consumption data exists for that day. Missing consumption does not remove the standing charge. DST transitions do not change the once-per-local-date rule. *Rationale: this matches standard UK supplier billing practice, where standing charges accrue for every calendar day on the account, not only days with recorded usage.*
 - **Export income**: only subtracted when both export consumption data and an export rate are available. If either is absent, export income is treated as zero.
-- If the user does not provide a standing charge, it defaults to zero and confidence is downgraded to **Medium** (see §6.2 rule 6).
+- If the user does not provide a standing charge, it defaults to zero and confidence is downgraded to **Medium** (see §6.2 rule 7).
 - If an interval's import rate cannot be resolved, the scenario is flagged as incomplete — the cost for that interval is excluded and a warning is shown.
 
 ### 5.2 Tariff-Only Saving
@@ -287,13 +287,13 @@ It consists of one record per canonical start-inclusive / end-exclusive half-hou
 | Field | Meaning |
 |---|---|
 | **UTC interval identity** | The UTC start timestamp (and implied end timestamp) of the half-hour period. This is the immutable identifier for the interval. |
-| **Imported kWh** | The consumption value drawn from the user's meter data for this interval. Zero when no import data exists. |
-| **Exported kWh** | Export generation returned to the grid for this interval, when export data is available. Null or absent when the user has not supplied export data or no export meter reading exists. |
+| **Imported kWh** | The consumption value drawn from the user's meter data for this interval. A recorded value of `0 kWh` is a valid observed measurement (the meter reported zero consumption for that half-hour). When no import observation exists for an interval, the consumption is missing — it must not be silently filled with zero, interpolated, or otherwise conflated with a measured zero. Missing consumption is represented through the canonical data-quality and warning mechanisms (see §6). |
+| **Exported kWh** | Export generation returned to the grid for this interval, when export data is available. A recorded value of `0 kWh` is a valid observed measurement. When no export observation exists for an interval, the consumption is missing — it must not be silently filled with zero or interpolated. Missing export data is distinct from a measured zero export. |
 | **Resolved import price** | The pence-per-kWh import rate applied to this interval under the current scenario's tariff. Unresolved when the tariff cannot be matched (e.g. dynamic rate missing). |
 | **Resolved export price** | The pence-per-kWh export rate applied to this interval, when both an export rate and export data exist for this interval. Null or absent otherwise. |
 | **Import cost** | `imported kWh × resolved import price` in pence (or derived monetary unit). Excluded from scenario totals when the import price is unresolved. |
 | **Export income** | `exported kWh × resolved export price` in pence. Zero when either exported kWh or export price is unavailable. |
-| **Warnings / unresolved-price state** | Any interval-level warning (see §5.10) applicable to this row — for example, unresolved import rate, duplicate timestamp, or extreme value. |
+| **Warnings / unresolved-price state** | Any interval-level warning (see §5.10) applicable to this row — for example, unresolved import rate, duplicate timestamp, or statistical outlier. |
 | **Scenario identity** | Which scenario produced this row: the current tariff, a named candidate tariff, the flexibility-only run, or a combined run. Allows the same interval to appear under multiple scenarios. |
 
 **Unresolved prices are never silently interpolated.** When an import rate cannot be resolved for an interval with non-zero consumption, that interval's cost contribution is excluded from the scenario subtotal and an interval-level warning is recorded.
@@ -347,7 +347,7 @@ Warnings communicate conditions that affect the reliability or completeness of r
 
 | Scope | Concerns | Examples |
 |---|---|---|
-| **Dataset-level** | Issues affecting the entire consumption data set before any scenario-specific calculation begins. | Missing intervals exceeding expected count, duplicate timestamps detected during import, extreme values outside Q3 + 3×IQR, file format irregularities. |
+| **Dataset-level** | Issues affecting the entire consumption data set before any scenario-specific calculation begins. | Missing intervals exceeding expected count, duplicate timestamps detected during import, statistical outliers outside Q3 + 3×IQR, file format irregularities. |
 | **Interval-level** | Issues affecting a single half-hour interval. These remain attached to the affected row in the per-interval breakdown (§5.5). | Import rate cannot be resolved for this interval (dynamic rate absent), duplicate interval detected at this timestamp, consumption value flagged as outlier. |
 | **Scenario-level** | Issues affecting a particular scenario's results as a whole. | Candidate tariff has no export rate defined while the user has export data, scenario confidence downgraded to Medium or Low, simulation classified as Projection rather than Replay. |
 | **Optimisation-level** | Issues arising from the scheduling process. | A declared appliance cannot be scheduled within its constraints under this scenario, EV module unavailable but EV appliance declared, battery dispatch not available for a battery load, multiple equally-cheap schedules found. |
@@ -384,6 +384,37 @@ The monthly view groups results by Europe/London calendar month and displays per
 
 The asymmetry is intentional: the user can always export their current results, but importing a saved scenario for comparison requires the replay architecture.
 
+### 5.14 Optional-Scenario and Empty-State Semantics
+
+When candidate tariffs or flexible loads are not configured, the simulator must produce deterministic empty-state behaviour. It must never fabricate zero-saving scenarios or misrepresent absent configuration as valid results.
+
+#### No candidate tariffs configured
+
+- **Current-cost results** remain fully available: net cost, interval breakdown, confidence, and warnings for the current tariff.
+- **Flexibility-only results** remain available when flexible loads are configured (see below). When no flexible loads are configured either, flexibility-only trivially equals current cost per case (b) above; it may be suppressed in the UI to avoid redundancy but the semantics remain defined.
+- **No tariff-only scenario result** is created. There is no candidate to compare against.
+- **No combined scenario result** is created. Combined scenarios require both a candidate tariff and at least one flexible load.
+- The UI represents these outputs as "not configured" or "not applicable", not as invented zero-saving tariff scenarios.
+
+#### No flexible loads configured
+
+- The flexibility-only scenario uses the same tariff and unchanged consumption profile as the current-cost scenario.
+- The flexibility-only net cost therefore equals the current net cost.
+- Flexibility-only saving is `0`.
+- The result carries a visible assumption or informational warning that no flexible loads were configured. This is distinct from an optimisation failure — it signals that the user has not declared any movable loads, not that the optimiser failed to find a better schedule.
+
+#### Candidate tariffs configured but no flexible loads configured
+
+- Each **tariff-only scenario** is calculated normally using the candidate tariff against the unchanged consumption profile.
+- The corresponding **combined scenario** has the same cost and saving as the tariff-only scenario because there is no load movement to apply.
+- The interaction effect is `0`.
+- The result carries the same visible "no flexible loads configured" assumption described above.
+
+#### Flexible loads configured but no candidate tariffs configured
+
+- The **flexibility-only scenario** is calculated normally under the current tariff.
+- No **tariff-only** or **combined** scenario collections are produced. There are no candidate tariffs to compare against.
+
 ---
 
 ## 6 — Confidence Labels
@@ -394,19 +425,20 @@ Every calculation result carries a confidence label derived from data quality. T
 
 | Label | Criteria |
 |---|---|
-| **High** | All expected intervals are present, no duplicates, no extreme values outside normal ranges, tariff rates fully resolved for every billable interval |
-| **Medium** | Minor gaps (≤5% of expected intervals), or unresolved import rates on greater than 0% and less than or equal to 5% of billable intervals, or duplicate intervals that have been resolved but affected ≤5% of expected intervals, or standing charge must be estimated |
-| **Low** | Significant gaps (>5% of expected intervals), unresolved import rates on >5% of billable intervals, duplicate intervals with unresolved timestamps blocking calculation, or extreme values that may distort results unless explicitly accepted by the user |
+| **High** | All expected intervals are present, no duplicates, no statistical outliers unless explicitly accepted by the user, tariff rates fully resolved for every billable interval, standing charge provided |
+| **Medium** | Missing intervals greater than 0% and less than or equal to 5% of expected total; unresolved import rates on greater than 0% and less than or equal to 5% of billable intervals; duplicate intervals that have been resolved but affected greater than 0% and less than or equal to 5% of expected intervals; statistical outlier detected but not yet accepted by the user; standing charge must be estimated |
+| **Low** | Missing intervals greater than 5% of expected total; unresolved import rates on greater than 5% of billable intervals; resolved duplicates affecting greater than 5% of expected intervals; unresolved duplicate timestamps blocking calculation |
 
 ### 6.2 Confidence calculation rules
 
 1. Start at **High**.
-2. If any interval is missing: demote to **Medium** if ≤5% of expected total, else demote to **Low**.
-3. If any duplicate intervals exist: unresolved duplicates (same timestamp, conflicting values) block calculation for that interval until the user resolves them; once resolved, demote to **Medium** if greater than 0% and less than or equal to 5% of expected total were duplicates, else demote to **Low**. The duplicate warning remains visible even after resolution.
-4. If any import rate cannot be resolved for an interval with non-zero consumption: no downgrade when 0% of billable intervals are affected; demote to **Medium** when greater than 0% and less than or equal to 5% of billable intervals are affected; demote to **Low** when greater than 5% of billable intervals are affected.
-5. If any consumption value is an outlier (exceeds Q3 + 3×IQR, where IQR = Q3 − Q1 computed over all non-zero consumption intervals in the dataset): demote to **Medium** unless user explicitly accepts it.
-6. If the standing charge was omitted by the user and defaulted to zero: demote to **Medium**.
-7. Final confidence is the minimum across all downgrade rules.
+2. **Missing intervals**: if missing intervals are greater than 0% and less than or equal to 5% of expected total, demote to **Medium**; if greater than 5%, demote to **Low**. If 0% are missing, no downgrade from this rule.
+3. **Resolved duplicate intervals**: if the proportion of resolved duplicates is greater than 0% and less than or equal to 5% of expected intervals, demote to **Medium**; if greater than 5%, demote to **Low**. The duplicate warning remains visible even after resolution.
+4. **Unresolved conflicting duplicate timestamps**: calculation for the affected interval is blocked until the user resolves them; overall confidence is downgraded to **Low** regardless of proportion; the warning remains visible after resolution.
+5. **Unresolved import prices on billable intervals**: no downgrade when 0% are unresolved; demote to **Medium** when greater than 0% and less than or equal to 5% of billable intervals have unresolved import prices; demote to **Low** when greater than 5%.
+6. **Statistical consumption outliers** (exceeds Q3 + 3×IQR, where IQR = Q3 − Q1 computed over all non-zero consumption intervals in the dataset): an unaccepted outlier causes a downgrade to **Medium**; if the user explicitly accepts the outlier, it no longer downgrades confidence; the warning remains visible regardless of acceptance status.
+7. **Missing standing charge defaulted to zero**: if the user did not provide a standing charge and it was defaulted to zero, demote to **Medium**.
+8. **Final confidence**: the minimum across all applicable downgrade rules above.
 
 ### 6.3 Replay vs. Projection labels
 
@@ -433,7 +465,7 @@ Terms used by FlexSavvy, defined for both developers and end-users.
 | **Smart-meter data** | The record of electricity consumption exported from the household's smart meter, typically as CSV or JSON containing timestamps and energy values. |
 | **Tariff** | A pricing structure that determines how much the user pays for each interval of consumption. May be flat (single rate) or time-of-use (different rates at different times). |
 | **Import rate** | The price in pence per kWh charged by the supplier for electricity drawn from the grid. Includes VAT. |
-| **Standing charge** | A fixed daily fee in pence, applied regardless of consumption. Applied once per Europe/London calendar date spanning the analysis period (from the earliest to the latest interval timestamp), even on days where no consumption data is present. |
+| **Standing charge** | A fixed daily fee in pence, applied regardless of consumption. Applied once per distinct Europe/London calendar date from the earliest interval's local date through the latest interval's local date inclusive. Every date within that span receives exactly one charge, even on days where no consumption data is present. DST transitions do not change the once-per-local-date rule. |
 | **Export rate** | The optional price in pence per kWh paid back to the user for surplus electricity returned to the grid (e.g., from solar PV). |
 | **Time-of-use (TOU) tariff** | A tariff where the import rate changes according to a published schedule of periods (e.g., "off-peak" and "peak"). Periods are defined in Europe/London local time. |
 | **Current cost** | The user's net electricity charge (variable name: `current_net_cost`) calculated by applying their existing tariff — import rates, standing charges, and export income where available — to their actual consumption data. See Section 5.1. |
@@ -463,3 +495,4 @@ Terms used by FlexSavvy, defined for both developers and end-users.
 |---|---|---|
 | 2026-07-20 | TASK-004 | Initial product specification: users, positioning, scope, journey, outputs, confidence, terminology |
 | 2026-07-21 | Corrective audit | Defined missing public-output semantics: interval breakdown (§5.5), daily/monthly aggregation boundaries (§5.6), per-appliance saving non-additivity (§5.7), schedules (§5.8), scoped warnings (§5.10), cross-format reconciliation (§5.11), monthly view (§5.12), export scope asymmetry (§5.13); added terminology rows for new definitions |
+| 2026-07-21 | Pre-schema corrective pass | Distinguished measured zero from missing consumption (§5.5); added optional-scenario empty-state semantics (§5.14) with four deterministic cases; aligned journey Step 8 to reference §5.14; reconciled confidence summary table (§6.1) and detailed rules (§6.2) — unified terminology, separated resolved vs unresolved duplicates, clarified outlier acceptance effect, added standing-charge criterion to High/Medium; standardised standing-charge span wording in §5.1 and §7 to explicit inclusive-date range with DST invariance |

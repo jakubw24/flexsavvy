@@ -422,6 +422,84 @@ grep credentials/secrets → only task-description references, no actual secrets
 AI_TASK_INDEX.md: TASK-001..004 DONE, TASK-005 TODO
 ```
 
+### Corrective Audit — Pre-Schema Specification Gaps (2026-07-21)
+
+A targeted corrective documentation pass was performed for TASK-004 only, resolving remaining product-semantics and cross-document consistency gaps before TASK-005 creates the canonical data schema. No application code, no package files, no build output were introduced. TASK-001 through TASK-004 remain `DONE`. TASK-005 remains `TODO` and is still the next task.
+
+#### Objective
+
+Resolve six categories of specification gaps:
+1. Distinguish measured zero consumption from missing consumption.
+2. Define optional-scenario and empty-state semantics for all combinations of candidate tariffs and flexible loads.
+3. Make confidence rules (summary table §6.1 and detailed rules §6.2) internally consistent.
+4. Align standing-charge span wording across PRODUCT_SPEC.md, IMPLEMENTATION_PLAN.md, and TASK-040.md.
+5. Complete TASK-005 documentation quality commands per QUALITY_GATES.md.
+6. Update progress and revision history.
+
+#### Files changed
+
+| File | Change |
+|------|--------|
+| `docs/PRODUCT_SPEC.md` | Six corrections (see below) |
+| `docs/PROGRESS.md` | This audit entry added; revision-history updated |
+| `docs/IMPLEMENTATION_PLAN.md` | TASK-040 standing-charge span wording aligned |
+| `docs/ai-tasks/TASK-005.md` | Quality commands completed per QUALITY_GATES.md |
+| `docs/ai-tasks/TASK-040.md` | Standing-charge span wording clarified |
+
+#### Semantic corrections applied
+
+| # | Section | Issue | Fix |
+|---|---------|-------|-----|
+| 1 | §5.5 Imported kWh | "Zero when no import data exists" conflated measured zero with missing data | Rewritten: `0 kWh` is a valid observed measurement; missing consumption must not be filled, interpolated, or converted to zero; missing data represented through canonical data-quality and warning mechanisms |
+| 2 | §5.5 Exported kWh | Ambiguous null handling for missing vs zero export | Clarified: measured `0 kWh` is valid; missing export is distinct from measured zero; no silent filling or interpolation |
+| 3 | §5.14 (new) | No empty-state semantics defined for scenarios when candidate tariffs or flexible loads are absent | Added four deterministic cases: (a) no candidate tariffs — current-cost and flexibility-only remain; no tariff-only or combined; UI shows "not configured"; (b) no flexible loads — flexibility-only equals current cost, saving is 0, visible assumption shown; (c) candidate tariffs but no flexible loads — tariff-only calculated normally, combined equals tariff-only, interaction is 0, same assumption shown; (d) flexible loads but no candidate tariffs — flexibility-only calculated normally, no tariff-only or combined |
+| 4 | §4 Step 8 | Journey did not reference empty-state behaviour for conditional scenarios | Updated steps 2-4 to note that tariff-only requires candidate tariffs, flexibility-only shows `0` saving with visible assumption when no loads configured, and combined requires both candidates and flexible loads; cross-references §5.14 |
+| 5 | §6.1 + §6.2 | Summary table and detailed rules had structural inconsistencies: (a) "extreme values" vs "outliers" terminology mismatch; (b) missing standing charge criterion in summary; (c) duplicate handling merged resolved and unresolved without clear separation; (d) outlier rule did not mention user acceptance effect on confidence |
+| Reconciled | Detailed rules now the canonical policy with 8 numbered items; summary table mirrors exactly: High includes "standing charge provided"; Medium lists all >0% and ≤5% conditions plus unaccepted outlier; Low lists all >5% conditions plus unresolved duplicates blocking calculation. No additional percentage thresholds invented for outliers. |
+| 6 | §5.1, §7 Terminology | Standing-charge span wording used "spanning the analysis period" without explicitly stating inclusive range or DST invariance | Rewritten: "applied once per distinct Europe/London calendar date from the earliest interval's local date through the latest interval's local date, inclusive; every date within that span receives exactly one standing charge; DST transitions do not change the once-per-local-date rule" |
+| 7 | TASK-040.md Objective + §Required implementation | "One charge per distinct local date" ambiguous — could be interpreted as only dates present in interval records | Rewritten: "one standing charge per distinct Europe/London calendar date from the earliest interval's local date through the latest interval's local date inclusive; every date within that span receives exactly one charge regardless of whether consumption observations exist for that date" |
+| 8 | IMPLEMENTATION_PLAN.md TASK-040 line | Same ambiguous wording as TASK-040 | Aligned with canonical standing-charge span definition |
+| 9 | TASK-005.md Commands that must be run | Only listed `git diff --check` and `git status --short`; missing `find . -maxdepth 3 -type f \| sort` and Markdown link verification required by QUALITY_GATES.md; no exclusion of TypeScript/build commands |
+| Updated | Added all three core mandatory commands plus explicit reference to QUALITY_GATES.md Markdown link check; added explicit exclusions preventing TypeScript, test, build, and package commands since no application project exists yet |
+
+#### Commands actually run (see verification section below)
+
+All verification commands passed. No application code was created. `docs/DATA_SCHEMA.md` still does not exist.
+
+#### Assumptions
+
+- HEAD abbaa4d4cb42607234cf9f3eec10050791626c83 is the correct committed state before these edits.
+- TASK-001 through TASK-004 are genuinely complete; no rollback needed.
+- `docs/DATA_SCHEMA.md` does not currently exist and is expected to be created by TASK-005.
+- The working tree was clean (no uncommitted changes) at the start of this task.
+
+#### Post-review repairs (2026-07-21, same day)
+
+An independent reviewer of the uncommitted diff identified three concrete findings:
+
+| # | Severity | Finding | Repair applied |
+|---|----------|---------|---------------|
+| 1 | high | Step 8 item 4 stated combined scenarios require **both** candidates and flexible loads, contradicting §5.14 case (c) which produces combined = tariff-only when only candidates exist. | Rewrote Step 8 item 4: "Produced when at least one candidate tariff is configured; when no flexible loads are also configured, the combined scenario equals the tariff-only scenario (see §5.14)." |
+| 2 | low | "extreme values" terminology persisted in five non-confidence locations (§3.1, §4 step 4, §9, §5.5 table, §5.10 table) despite PROGRESS claiming reconciliation item 5(a) complete. | Replaced all five instances with "statistical outlier(s)" to match §§6.1–6.2 terminology. |
+| 3 | medium | §5.14 case (a) stated that when both candidates and flexible loads are absent, flexibility-only is suppressed entirely ("only the current-cost scenario is produced"), contradicting Step 8 item 3 which says flexibility-only is always produced with saving of `0` when no flexible loads exist. | Rewrote §5.14 case (a) to say flexibility-only trivially equals current cost per case (b); it may be UI-suppressed for redundancy but the semantics remain defined, reconciling both prescriptions. |
+
+#### Commands actually run after second repair
+
+```
+git diff --check → no output (clean)
+grep -n 'extreme' docs/PRODUCT_SPEC.md → no matches (exit 1)
+grep -n 'Produced only when both' docs/PRODUCT_SPEC.md → no matches (exit 1)
+find . -maxdepth 3 -type f | sort → no unexpected files
+test ! -e docs/DATA_SCHEMA.md → PASS
+Markdown relative-link checker → PASS (no broken links)
+```
+
+#### Remaining risks
+
+- The "unresolved duplicates block calculation" rule requires a specific UI interaction pattern that has not been designed yet. TASK-012 or later will need to define the resolution interface.
+- Missing-vs-zero distinction requires careful schema design in TASK-005 — the data-layer must use null/absent for missing, not numeric zero.
+- Empty-state semantics for "no flexible loads configured" require a visible assumption/warning; the exact UI mechanism is deferred to TASK-078+.
+
 ## Known Risks
 
 | Risk | Severity | Mitigation |

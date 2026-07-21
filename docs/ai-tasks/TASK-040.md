@@ -17,7 +17,7 @@ Execute **TASK-040 only**. Do not start another task.
 
 ### Objective
 
-Produce exact interval records and one standing charge per distinct local date.
+Produce exact interval records and apply one standing charge per distinct Europe/London calendar date from the earliest interval's local date through the latest interval's local date inclusive. Every date within that span receives exactly one standing charge, regardless of whether consumption data exists for that date.
 
 ### Preparation
 
@@ -45,7 +45,7 @@ Before editing:
 1. Resolve import/export rates per interval
 2. Calculate cost/income without display rounding
 3. Retain energy, rates, components and source IDs
-4. Add one charge per distinct Europe/London date
+4. Apply one standing charge per distinct Europe/London calendar date spanning from the earliest interval's local date through the latest interval's local date inclusive; every date within that span receives exactly one charge regardless of whether consumption observations exist for that date
 5. Return structured warnings
 
 ### Explicit exclusions

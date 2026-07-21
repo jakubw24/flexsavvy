@@ -74,8 +74,16 @@ Do not browse unrelated websites. Do not install an unnecessary dependency.
 
 ### Commands that must be run
 
-- `git diff --check`
 - `git status --short`
+- `find . -maxdepth 3 -type f | sort`
+- `git diff --check`
+- Run the repository's Markdown relative-link verification command as defined in [`docs/QUALITY_GATES.md`](../QUALITY_GATES.md) (required for all documentation-only tasks)
+
+The following commands must **not** be included because no application project exists yet:
+- No `npx tsc --noEmit`, `npm run typecheck`, or TypeScript commands.
+- No `npx vitest run`, `npm run test`, or test runner commands.
+- No `npx astro check` or build commands.
+- No package installation, build output, or schema-compilation steps.
 
 If a command is missing because a dependency task is incomplete, stop and report the dependency mismatch. Never fabricate output or weaken a quality gate.
 

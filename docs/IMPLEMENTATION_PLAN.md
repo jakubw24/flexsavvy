@@ -57,7 +57,7 @@ The executable prompt for each item is under `docs/ai-tasks/`.
 - **TASK-037: Implement interval pricing and missing-price handling** — Resolve dynamic rates by exact UTC interval.
 - **TASK-038: Implement export pricing resolution** — Resolve optional export tariffs independently.
 - **TASK-039: Build manual tariff forms and rate CSV import** — Allow local definition of all supported tariffs.
-- **TASK-040: Implement interval billing and standing charges** — Produce exact interval records and one standing charge per distinct local date.
+- **TASK-040: Implement interval billing and standing charges** — Produce exact interval records; apply one standing charge per distinct Europe/London calendar date from the earliest interval's local date through the latest interval's local date inclusive, regardless of whether consumption data exists for that date.
 - **TASK-041: Implement aggregation, savings decomposition and precision audit** — Complete exact billing and transparent savings.
 ## 7 — Octopus catalogue
 
