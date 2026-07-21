@@ -393,7 +393,7 @@ When candidate tariffs or flexible loads are not configured, the simulator must 
 - **Current-cost results** remain fully available: net cost, interval breakdown, confidence, and warnings for the current tariff.
 - **Flexibility-only results** remain available when flexible loads are configured (see below). When no flexible loads are configured either, flexibility-only trivially equals current cost per case (b) above; it may be suppressed in the UI to avoid redundancy but the semantics remain defined.
 - **No tariff-only scenario result** is created. There is no candidate to compare against.
-- **No combined scenario result** is created. Combined scenarios require both a candidate tariff and at least one flexible load.
+- **No combined scenario result** is created. There are no candidate tariffs to combine with.
 - The UI represents these outputs as "not configured" or "not applicable", not as invented zero-saving tariff scenarios.
 
 #### No flexible loads configured

@@ -568,6 +568,54 @@ $ git diff --check
 2. Schema versioning rules (MAJOR/MINOR/PATCH) are defined here but no automated version-checking mechanism exists yet; downstream consumers must manually compare `schema_version` strings until TASK-015+ introduces validation.
 3. The nullability convention (`null` = missing, `0` = measured zero) is stated but not enforced by any schema validator — enforcement depends on TASK-006 (calculation methodology) and later TypeScript/JSON Schema definitions.
 
+### TASK-004 corrective audit — combined-scenario empty-state contradiction (2026-07-21)
+
+**Contradiction found**: §5.14 "No candidate tariffs configured" subsection stated:
+> *Combined scenarios require both a candidate tariff and at least one flexible load.*
+
+This contradicted the "Candidate tariffs configured but no flexible loads configured" subsection (§5.14) which correctly stated that when candidate tariffs exist but no flexible loads are configured, the combined scenario equals the tariff-only scenario with interaction effect `0`. It also contradicted Step 8 (line 181) which says combined optimisation is produced whenever at least one candidate tariff is configured.
+
+**Rule adopted** (canonical 5-point rule):
+
+1. A combined result is produced whenever a candidate tariff is configured.
+2. When flexible loads exist, the combined result uses the candidate tariff plus optimised loads.
+3. When no flexible loads exist, the combined result equals the corresponding tariff-only result.
+4. In that no-load case, combined saving equals tariff-only saving and interaction effect equals zero.
+5. When no candidate tariff exists, no combined result is produced.
+
+**Change applied**: §5.14 line 396 — replaced:
+> `Combined scenarios require both a candidate tariff and at least one flexible load.`
+
+with:
+> `There are no candidate tariffs to combine with.`
+
+This removes the incorrect "both required" precondition while preserving the correct "no result when no candidate exists" semantics.
+
+**Files changed**: `docs/PRODUCT_SPEC.md` (1 line in §5.14), `docs/PROGRESS.md` (this entry).
+
+**Commands run**:
+```bash
+grep -n -i "combined|candidate tariff|flexible load" docs/PRODUCT_SPEC.md
+# Confirmed all combined-result references are now consistent with the 5-point rule.
+
+cat -n docs/PRODUCT_SPEC.md | sed -n '387,417p'
+# Inspected §5.14 context before and after edit.
+
+GIT_PAGER=cat git diff --check
+# Exit code 0 — no whitespace errors.
+
+python3 -c "<markdown-relative-link-checker from QUALITY_GATES.md>"
+# All relative links resolve (exit code 0).
+```
+
+**Assumptions**:
+1. The "both required" wording was the only contradictory statement; all other combined-result references (Step 8 line 181, §5.4, §5.14 other subsections) already state the correct behaviour.
+2. No code changes needed — this is a documentation-only correction.
+
+**Remaining risks**:
+1. Implementers may have coded to the old "both required" rule; TASK-007+ implementation will need verification against the corrected spec.
+2. The interaction effect formula in §5.4 (`combined_saving − (tariff_only + flexibility_only)`) is stated as non-zero in general but `0` when no flexible loads exist — this edge case depends on implementers reading the full §5.14.
+
 ## Known Risks
 
 | Risk | Severity | Mitigation |
