@@ -40,7 +40,7 @@ When E2E tests are available (Phase 3+):
 
 ## Markdown Link Verification
 
-For documentation-only tasks (Phase 0), relative Markdown links must resolve.
+For all documentation-only tasks, relative Markdown links must resolve.
 Run the following from the repository root:
 
 ```bash

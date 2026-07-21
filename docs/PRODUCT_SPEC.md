@@ -115,7 +115,7 @@ Non-goals are explicit boundaries to prevent scope creep. Each is testable:
 | NG-003 | No third-party scripts in `/simulator` | `grep` of built HTML under `/simulator` finds no `<script src>` pointing to external domains |
 | NG-004 | No ongoing subscription model | Alpha release has no billing integration, no Stripe/PayPal SDK, no recurring-payment logic |
 | NG-005 | No gas or multi-fuel comparison | Inputs accept electricity consumption only; no gas price fields appear in forms |
-| NG-006 | No commercial or three-phase tariffs | Tariff schema rejects three-phase identifiers and limits single-phase power assumptions |
+| NG-006 | No commercial or three-phase tariffs | No commercial or three-phase tariff category is offered; the product makes no claim to model three-phase installations; calculation assumptions remain residential single-phase unless a later task explicitly expands scope |
 | NG-007 | No installation advice | Product does not recommend hardware purchases or installation providers |
 | NG-008 | No live smart-meter polling | Product never initiates its own DCC or MPAN queries; data is user-supplied only |
 | NG-009 | No browser storage of sensitive state by default | `localStorage`/`sessionStorage` contains no consumption intervals, tariff inputs, or derived costs after page unload (unless user explicitly exports) |
@@ -177,8 +177,8 @@ If available, user configures:
 User clicks "Run". The Web Worker calculates:
 1. Current cost on the existing tariff.
 2. Cost under each candidate tariff (tariff-only).
-3. Optimal appliance/EV/battery schedules under the current tariff (flexibility-only).
-4. Combined optimisation under each candidate tariff.
+3. Optimal appliance schedules under the current tariff (flexibility-only). If the EV optimisation module is implemented and enabled, EV charging schedules are included. If the battery dispatch module is implemented and enabled, battery charge/discharge schedules are included. Appliance optimisation is always available within public-alpha scope; EV and battery results appear only when their respective paid-ready modules are active.
+4. Combined optimisation under each candidate tariff, applying the same module availability rules as step 3.
 
 Results display within seconds for typical monthly data sets.
 
@@ -188,7 +188,7 @@ User sees:
 - **Summary**: current cost, best possible saving, and which levers contribute most.
 - **Decomposition**: tariff-only saving, flexibility-only saving, combined saving (showing interaction effects).
 - **Confidence**: per-scenario confidence level based on data quality and assumptions.
-- **Schedules**: specific recommended start times for each flexible appliance; EV charging profile; battery charge/discharge timeline.
+- **Schedules**: specific recommended start times for each flexible appliance. EV charging profile appears only when the EV optimisation module is implemented and enabled. Battery charge/discharge timeline appears only when the battery dispatch module is implemented and enabled.
 - **Monthly view**: cost comparison bar chart across months or weeks.
 - **Warnings**: data gaps, extreme values, assumptions that may affect results.
 
@@ -258,8 +258,14 @@ flexibility_only_saving = current_net_cost − flexible_net_cost(same_tariff, op
 ```
 
 - Uses deterministic optimisation over declared flexible loads.
-- Does not include EV or battery if those modules are not yet active.
-- The saving is decomposed per-appliance in the results.
+- Appliance optimisation is always included within public-alpha scope.
+- EV charging optimisation is included only when the EV module (paid-ready, §3.2) is implemented and enabled.
+- Battery dispatch optimisation is included only when the battery module (paid-ready, §3.2) is implemented and enabled.
+- When a paid-ready module is unavailable, the base simulator does not produce results for that load type.
+- The headline flexibility-only saving is the portfolio result with all enabled flexible appliances optimised together against the same baseline.
+- An appliance-level estimate may show the saving from optimising that single appliance in isolation against the current (unmodified) baseline.
+- Isolated appliance estimates are explanatory and **not additive**: the UI must not sum isolated per-appliance savings and present the result as the portfolio total.
+- Any future additive attribution method (e.g. cost-allocation or Shapley-value decomposition) would require an explicit methodology decision in a later task.
 
 ### 5.4 Combined Saving
 
@@ -272,7 +278,61 @@ combined_saving = current_net_cost − flexible_net_cost(candidate_tariff, optim
 - This is **not** guaranteed to equal `tariff_only_saving + flexibility_only_saving` because optimisation outcomes differ under different tariffs (the cheapest intervals shift).
 - The interaction effect is: `interaction = combined_saving − (tariff_only_saving + flexibility_only_saving)`. A non-zero interaction means the two levers are not independent.
 
-### 5.5 Cost Units
+### 5.5 Interval-Level Breakdown
+
+The per-interval breakdown is the foundational output from which all summary figures are derived.
+
+It consists of one record per canonical start-inclusive / end-exclusive half-hour interval. Each record contains:
+
+| Field | Meaning |
+|---|---|
+| **UTC interval identity** | The UTC start timestamp (and implied end timestamp) of the half-hour period. This is the immutable identifier for the interval. |
+| **Imported kWh** | The consumption value drawn from the user's meter data for this interval. Zero when no import data exists. |
+| **Exported kWh** | Export generation returned to the grid for this interval, when export data is available. Null or absent when the user has not supplied export data or no export meter reading exists. |
+| **Resolved import price** | The pence-per-kWh import rate applied to this interval under the current scenario's tariff. Unresolved when the tariff cannot be matched (e.g. dynamic rate missing). |
+| **Resolved export price** | The pence-per-kWh export rate applied to this interval, when both an export rate and export data exist for this interval. Null or absent otherwise. |
+| **Import cost** | `imported kWh × resolved import price` in pence (or derived monetary unit). Excluded from scenario totals when the import price is unresolved. |
+| **Export income** | `exported kWh × resolved export price` in pence. Zero when either exported kWh or export price is unavailable. |
+| **Warnings / unresolved-price state** | Any interval-level warning (see §5.10) applicable to this row — for example, unresolved import rate, duplicate timestamp, or extreme value. |
+| **Scenario identity** | Which scenario produced this row: the current tariff, a named candidate tariff, the flexibility-only run, or a combined run. Allows the same interval to appear under multiple scenarios. |
+
+**Unresolved prices are never silently interpolated.** When an import rate cannot be resolved for an interval with non-zero consumption, that interval's cost contribution is excluded from the scenario subtotal and an interval-level warning is recorded.
+
+### 5.6 Daily and Monthly Aggregation Boundaries
+
+| Dimension | Rule |
+|---|---|
+| **Interval identity** | Always UTC (see §5.5). The start timestamp never changes based on calendar grouping. |
+| **Daily grouping** | For billing and result summaries, intervals are grouped into Europe/London calendar dates. A single local date may span up to three UTC days at DST transitions. |
+| **Monthly grouping** | Result summaries group intervals into Europe/London calendar months. Month boundaries follow the Europe/London calendar, not UTC. |
+| **DST interval counts** | A Europe/London calendar day may contain 46 half-hour intervals (spring-forward), 48 (normal), or 50 (fall-back). Code must never assume 48 intervals per local day. |
+| **Standing charges** | Applied once per distinct applicable Europe/London date according to the standing-charge rule in §5.1. The number of actual half-hour intervals on a given local date does not affect standing-charge accrual. |
+
+### 5.7 Per-Appliance Saving
+
+The flexibility-only saving (§5.3) is a **portfolio-level** figure. Per-appliance breakdowns are supplementary and carry specific semantics:
+
+1. The **headline flexibility-only saving** is the cost reduction achieved when all declared flexible appliances are optimised simultaneously against the current tariff, using the joint optimal schedule.
+2. An **appliance-level estimate** may show the saving from optimising that single appliance in isolation — i.e., moving only that appliance to its cheapest valid window while leaving all other loads at their baseline positions.
+3. Isolated appliance estimates are **explanatory only and not additive**. Because appliances compete for cheap intervals, the sum of isolated estimates will generally differ from (and typically exceed) the actual portfolio saving.
+4. The UI must not present a column of per-appliance savings whose sum equals the total flexibility-only saving unless an explicit attribution methodology has been adopted in a later task.
+5. Any future additive decomposition method (e.g. cost-allocation, marginal contribution, or Shapley-value approach) requires a documented methodology decision before implementation.
+
+### 5.8 Schedules
+
+An appliance schedule is the recommended operating plan produced by the deterministic optimiser for one flexible appliance under one scenario. A schedule record comprises:
+
+| Component | Description |
+|---|---|
+| **Recommended start time** | The Europe/London local start time of the optimal cycle, derived from the UTC interval selected by the optimiser. |
+| **Cycle duration / interval coverage** | The number of contiguous half-hour intervals the appliance runs for, and the covered UTC interval range (start-inclusive, end-exclusive). |
+| **Tariff / scenario context** | Which tariff or scenario the schedule was optimised against (e.g. "current tariff" or candidate name). The same appliance may have different schedules under different tariffs. |
+| **User constraints satisfied** | Confirmation that the schedule falls within the declared earliest/latest start window, does not exceed the declared cycle duration, and respects any other user-specified limits (e.g. minimum gap between cycles). |
+| **Infeasibility explanation** | When no valid schedule exists (e.g. the declared time window is shorter than the required cycle duration), a human-readable reason is provided rather than a blank or error state. |
+
+**EV and battery schedules:** EV charging profiles and battery charge/discharge timelines are described as **conditional paid-ready outputs**. They appear only when the respective optimisation module (§3.2) has been implemented and enabled. The base public-alpha simulator produces appliance schedules but does not generate EV or battery schedules unless those modules are active.
+
+### 5.9 Cost Units
 
 - **Rates** are expressed in pence per kWh including VAT.
 - **Energy** is expressed in kWh.
@@ -280,6 +340,49 @@ combined_saving = current_net_cost − flexible_net_cost(candidate_tariff, optim
 - Intermediate values are not rounded merely for display; they retain their full precision until the final presentation boundary.
 - Display rounding occurs only when presenting a value to the user, using half-up rounding to two decimal places of £ GBP (e.g., £0.005 rounds to £0.01), unless a tariff explicitly requires another rounding rule.
 - Very large sums may show thousands separators in the UI; values less than 1p display as £0.00.
+
+### 5.10 Warnings
+
+Warnings communicate conditions that affect the reliability or completeness of results. Each warning is **scoped** to the output it concerns so that calculation progress does not cause warnings to disappear.
+
+| Scope | Concerns | Examples |
+|---|---|---|
+| **Dataset-level** | Issues affecting the entire consumption data set before any scenario-specific calculation begins. | Missing intervals exceeding expected count, duplicate timestamps detected during import, extreme values outside Q3 + 3×IQR, file format irregularities. |
+| **Interval-level** | Issues affecting a single half-hour interval. These remain attached to the affected row in the per-interval breakdown (§5.5). | Import rate cannot be resolved for this interval (dynamic rate absent), duplicate interval detected at this timestamp, consumption value flagged as outlier. |
+| **Scenario-level** | Issues affecting a particular scenario's results as a whole. | Candidate tariff has no export rate defined while the user has export data, scenario confidence downgraded to Medium or Low, simulation classified as Projection rather than Replay. |
+| **Optimisation-level** | Issues arising from the scheduling process. | A declared appliance cannot be scheduled within its constraints under this scenario, EV module unavailable but EV appliance declared, battery dispatch not available for a battery load, multiple equally-cheap schedules found. |
+
+A warning remains associated with the output it affects. It must not disappear merely because calculation continues past the affected data point. Warnings are advisory — they do not halt computation but inform interpretation.
+
+### 5.11 Reconciliation Across Output Formats
+
+The dashboard, interval CSV export, scenario JSON export, and printable HTML report all derive from the **same canonical result set**. They must reconcile as follows:
+
+1. **Single source of truth**: One optimisation run produces one canonical interval-level result (§5.5). Every output format is a presentation-layer projection of that result. No output format independently recomputes totals.
+2. **Scenario consistency**: The same scenario must produce numerically reconcilable results across all formats. A dashboard summary, the CSV row sum, and the JSON total must agree before display rounding is applied.
+3. **Unrounded intermediate calculations**: All calculations use unrounded canonical values throughout the pipeline. Rounding occurs only at presentation boundaries (user-visible figures).
+4. **No recomputation**: Different output formats must not apply different formulas to derive totals. A dashboard figure that differs from a CSV row total indicates a bug, not a rounding difference.
+5. **Traceability**: Every summary figure in any output format must be derivable from the canonical interval records. If it cannot be derived by summing or aggregating the canonical intervals plus standing charges, its definition is incomplete.
+
+### 5.12 Monthly View
+
+The monthly view groups results by Europe/London calendar month and displays per-month cost breakdowns (current cost, candidate costs, savings).
+
+- Month boundaries follow the **Europe/London calendar**, not UTC month boundaries.
+- Each interval is assigned to a local month by converting its UTC start timestamp to Europe/London local date.
+- The sum of monthly figures must **reconcile exactly** with the canonical interval-level totals before any display rounding is applied.
+- Display rounding (half-up to two decimal places £ GBP) occurs only when presenting monthly values, not during aggregation.
+
+### 5.13 Export Scope — Public Alpha vs. Later Capabilities
+
+| Capability | Scope | Rationale |
+|---|---|---|
+| **Printable HTML report** | Public alpha | Summary results and recommendations for local printing or PDF generation. Generated in-browser, no server interaction. |
+| **Interval CSV export** | Public alpha | Full interval-level breakdown (§5.5) exported as a local download. Generated in-browser, no server interaction. |
+| **Scenario JSON (local export)** | Public alpha | The current scenario's configuration and results can be downloaded as a JSON file for the user's own records. This is a one-way export — the file serves as a local copy of what was just calculated. |
+| **Replay mode (upload saved scenario)** | Paid-ready / later scope | Uploading a previously exported scenario JSON to compare period-over-period changes or validate methodology consistency requires replay infrastructure (§3.2). This remains a later capability even though the export format exists in alpha. |
+
+The asymmetry is intentional: the user can always export their current results, but importing a saved scenario for comparison requires the replay architecture.
 
 ---
 
@@ -291,16 +394,16 @@ Every calculation result carries a confidence label derived from data quality. T
 
 | Label | Criteria |
 |---|---|
-| **High** | All expected intervals are present, no duplicates, no extreme values outside normal ranges, tariff rates fully resolved for every interval |
-| **Medium** | Minor gaps (≤5% of expected intervals), or minor rate resolution issues (e.g., a single dynamic rate cannot be resolved — the interval is excluded and a warning is shown), or standing charge must be estimated |
-| **Low** | Significant gaps (>5% of expected intervals), unresolved import rates on >5% of billable intervals, duplicate intervals requiring user confirmation, or extreme values that may distort results unless explicitly accepted by the user |
+| **High** | All expected intervals are present, no duplicates, no extreme values outside normal ranges, tariff rates fully resolved for every billable interval |
+| **Medium** | Minor gaps (≤5% of expected intervals), or unresolved import rates on greater than 0% and less than or equal to 5% of billable intervals, or duplicate intervals that have been resolved but affected ≤5% of expected intervals, or standing charge must be estimated |
+| **Low** | Significant gaps (>5% of expected intervals), unresolved import rates on >5% of billable intervals, duplicate intervals with unresolved timestamps blocking calculation, or extreme values that may distort results unless explicitly accepted by the user |
 
 ### 6.2 Confidence calculation rules
 
 1. Start at **High**.
 2. If any interval is missing: demote to **Medium** if ≤5% of expected total, else demote to **Low**.
-3. If any duplicate intervals exist and were auto-resolved without user input: demote to **Medium** if ≤5% of expected total, else demote to **Low**.
-4. If any import rate cannot be resolved for an interval with non-zero consumption: demote to **Medium** (one interval) or **Low** (>5% of billable intervals).
+3. If any duplicate intervals exist: unresolved duplicates (same timestamp, conflicting values) block calculation for that interval until the user resolves them; once resolved, demote to **Medium** if greater than 0% and less than or equal to 5% of expected total were duplicates, else demote to **Low**. The duplicate warning remains visible even after resolution.
+4. If any import rate cannot be resolved for an interval with non-zero consumption: no downgrade when 0% of billable intervals are affected; demote to **Medium** when greater than 0% and less than or equal to 5% of billable intervals are affected; demote to **Low** when greater than 5% of billable intervals are affected.
 5. If any consumption value is an outlier (exceeds Q3 + 3×IQR, where IQR = Q3 − Q1 computed over all non-zero consumption intervals in the dataset): demote to **Medium** unless user explicitly accepts it.
 6. If the standing charge was omitted by the user and defaulted to zero: demote to **Medium**.
 7. Final confidence is the minimum across all downgrade rules.
@@ -346,6 +449,11 @@ Terms used by FlexSavvy, defined for both developers and end-users.
 | **Projection** | A simulation that involves current or future rates, or modelled behaviour changes, producing an estimate with inherent uncertainty. See Section 6.3. |
 | **Web Worker** | A background JavaScript thread in the browser that performs heavy calculations without blocking the UI. All FlexSavvy optimisation runs here. |
 | **Privacy-first** | The design principle that user data never leaves the browser, no accounts are required, and no sensitive state is persisted by default. |
+| **Interval-level breakdown** | One record per canonical half-hour interval containing UTC identity, imported/exported kWh, resolved import/export prices, import cost, export income, applicable warnings, and scenario identity. See §5.5. |
+| **Monthly grouping** | Result summaries grouped by Europe/London calendar month. Month boundaries follow the local calendar; a day may contain 46, 48, or 50 half-hour intervals at DST transitions. Monthly figures reconcile exactly with canonical interval totals before display rounding. See §5.6 and §5.12. |
+| **Appliance-level estimate** | The cost reduction from optimising one flexible appliance in isolation against the current baseline. Explanatory only — not additive across appliances. The UI must not sum these into a portfolio total. See §5.7. |
+| **Schedule** | The recommended operating plan for one flexible appliance under one scenario: start time, cycle duration, tariff context, satisfied constraints, and an explanation when no valid schedule exists. EV and battery schedules are conditional paid-ready outputs. See §5.8. |
+| **Warning (scoped)** | A condition affecting the reliability or completeness of results, scoped to dataset-level, interval-level, scenario-level, or optimisation-level. Warnings remain associated with their affected output and do not disappear when calculation continues. See §5.10. |
 
 ---
 
@@ -354,3 +462,4 @@ Terms used by FlexSavvy, defined for both developers and end-users.
 | Date | Task | Change |
 |---|---|---|
 | 2026-07-20 | TASK-004 | Initial product specification: users, positioning, scope, journey, outputs, confidence, terminology |
+| 2026-07-21 | Corrective audit | Defined missing public-output semantics: interval breakdown (§5.5), daily/monthly aggregation boundaries (§5.6), per-appliance saving non-additivity (§5.7), schedules (§5.8), scoped warnings (§5.10), cross-format reconciliation (§5.11), monthly view (§5.12), export scope asymmetry (§5.13); added terminology rows for new definitions |

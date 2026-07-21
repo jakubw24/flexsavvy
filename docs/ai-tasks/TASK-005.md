@@ -30,7 +30,7 @@ Before editing:
    - `docs/AI_TASK_INDEX.md`
    - `docs/PROGRESS.md`
    - `docs/PRODUCT_SPEC.md`
-   - `docs/DATA_SCHEMA.md`
+   - `docs/DATA_SCHEMA.md` **if it exists**; otherwise confirm that its absence is expected (TASK-005 creates it) and do not treat the missing file as an incomplete dependency.
 3. Confirm all dependency tasks are marked `DONE`.
 4. Inspect files created by dependency tasks, relevant tests, `git status --short` and the relevant portion of `git diff`.
 5. Search the fresh FlexSavvy repository before creating duplicate symbols or modules.
