@@ -2,10 +2,10 @@
 
 ## Project State
 
-Tasks 001 through 007 are complete.
-Product documentation now includes docs/PRODUCT_SPEC.md, docs/DATA_SCHEMA.md, docs/METHODOLOGY.md, and docs/PRIVACY_DESIGN.md.
+Tasks 001 through 008 are complete.
+Product documentation now includes docs/PRODUCT_SPEC.md, docs/DATA_SCHEMA.md, docs/METHODOLOGY.md, docs/PRIVACY_DESIGN.md, and docs/TRACEABILITY.md.
 No application code, no package manifest, no build output.
-TASK-008 is next.
+TASK-009 is next.
 
 ## Completed Tasks
 
@@ -18,6 +18,7 @@ TASK-008 is next.
 | TASK-005 | Create canonical data schema | 2026-07-21 | Created docs/DATA_SCHEMA.md with consumption, quality, tariff (flat/TOU/dynamic), appliance, EV, battery, carbon, scenario and result models; nullability conventions distinguishing missing from measured zero; UTC start-inclusive/end-exclusive intervals; kWh and VAT-inclusive pence units; schema versioning rules; valid and invalid JSON examples; unit cross-reference table; field-to-source mapping table; runtime constraints. **Key decisions:** (1) schema v1.0.0 with semantic-versioned bumps for structural changes; (2) null = missing observation, 0 = measured zero — never conflated; (3) `schema_version` required on all data-carrying documents including exports; (4) derived fields (`utc_end`, `local_date`, `local_hour`) must not be independently edited after ingestion-time derivation. |
 | TASK-006 | Create calculation methodology | 2026-07-21 | Created docs/METHODOLOGY.md with billing formulas, standing charge, export income, net cost aggregation, rounding/precision rules, savings decomposition, appliance candidate generation/scoring/portfolio optimisation, EV energy requirement/allocation/unmet energy, battery SOC/actions/transitions/constraints/DP/rolling horizons/terminal SOC, carbon emissions and weighted scoring, edge cases (missing data, DST, annualisation); three worked examples (billing, EV, battery) independently verified by Python assertions. **Key decisions:** (1) intermediate values retain full precision; rounding only at presentation boundary (half-up to £0.01); (2) efficiency losses split as sqrt(round_trip_efficiency) per charge/discharge direction for battery; (3) rolling 48-hour horizons with hard final-horizon SOC constraint (final SOC >= starting SOC), no quadratic penalty; (4) annualisation uses 365.25 days/year with visible estimate assumption. **Corrected 2026-07-21:** replaced quadratic midpoint terminal penalty with hard final-SOC constraint; corrected grid_import formula; replaced non-optimal battery worked example with independently provable optimum verified by brute-force enumeration. |
 | TASK-007 | Create privacy design | 2026-07-21 | Created docs/PRIVACY_DESIGN.md with four-tier data classification (SHD, CD, PRD, TCS), permitted and forbidden outbound requests, forbidden fields in network requests, memory lifecycle with deletion mechanism, storage restrictions table, analytics policy, public-data cache boundary, connected-data out-of-scope statement, browser network test strategy (interception, payload, storage tests), threat model covering telemetry, logs, scripts, exports. Cross-checked against PRODUCT_SPEC.md non-goals NG-001/NG-003/NG-009 and DATA_SCHEMA.md data types. **Key decisions:** (1) SHD never leaves browser except user-initiated download; (2) all storage mechanisms have explicit SHD prohibition with exceptions only for CD (localStorage UI prefs) and PRD (IndexedDB/Service Worker cache); (3) public alpha has zero runtime network calls beyond site asset loading — PRD fetched at build time and committed as fixtures; (4) no legal conclusions provided, engineering specification only.
+| TASK-008 | Documentation traceability audit | 2026-07-21 | Created docs/TRACEABILITY.md with: (1) output-to-source traceability for all 11 PRODUCT_SPEC §5 outputs mapping to input fields, formulas, confidence handling, and privacy class; (2) 44 engine-rule acceptance criteria (ER-001 through ER-044) covering billing, savings decomposition, appliance/EV/battery optimisation, carbon, DST, and annualisation; (3) forbidden-field-to-privacy-test mapping for all 8 SHD categories against the three test types in PRIVACY_DESIGN §7; (4) terminology consistency audit across all four Phase-1 documents — no unresolved conflicts found; (5) unit consistency audit — all monetary intermediates use pence, energy uses kWh, rates use p/kWh with VAT; (6) scope consistency audit — all 10 public-alpha capabilities and 4 paid-ready items verified traceable; (7) non-goal verification — all 10 non-goals (NG-001 through NG-010) have testable criteria and enforcement paths; (8) implementation matrix update confirming all downstream task dependencies satisfied. **Audit result:** no new contradictions identified; all prior corrective audits had resolved active issues.
 
 ## Decisions
 
@@ -772,7 +773,7 @@ python3 -c "<rg-equivalent pattern check for obsolete battery methodology>"
 
 ## Next Task
 
-TASK-007 — Create privacy design
+TASK-009 — Bootstrap or verify static Astro and React application
 
 
 ## Final Readiness Audit — Tasks 001-006 (2026-07-21)
@@ -870,3 +871,42 @@ A Python cross-reference script compared PRIVACY_DESIGN.md against PRODUCT_SPEC.
 2. **Dependency supply-chain telemetry**: Installed JS packages could introduce hidden network calls. Mitigated by dependency audit at TASK-013 (CI grep gate) but requires ongoing vigilance as packages are added.
 3. **Export schema drift**: If export code adds fields not declared in DATA_SCHEMA.md §8, unintended data leakage could occur. Mitigated by TASK-086–TASK-089 (export audit).
 4. **Console.log leakage in production**: Debug logging containing SHD could appear in user DevTools. Mitigated by TASK-013 CI lint rule and build-time log stripping.
+
+### TASK-008 commands (2026-07-21)
+
+```bash
+$ GIT_PAGER=cat git diff --check
+EXIT_CODE=0
+(exit code 0 — no whitespace or conflict-marker errors in the working tree)
+
+$ git status --short
+ M docs/AI_TASK_INDEX.md
+ M docs/PROGRESS.md
+?? docs/TRACEABILITY.md
+(three files: TASK-008 row updated in index, PROGRESS updated, new TRACEABILITY.md created)
+```
+
+#### Cross-document reference validation
+
+A Python script confirmed all 4 Phase-1 source documents exist and are referenced from TRACEABILITY.md:
+
+| Check | Result |
+|---|---|
+| PRODUCT_SPEC.md exists and referenced | PASS (references in §1 output-to-source, §2 engine rules) |
+| DATA_SCHEMA.md exists and referenced | PASS (schema types, field names, nullability) |
+| METHODOLOGY.md exists and referenced | PASS (formula citations, section numbers for all 44 ER rules) |
+| PRIVACY_DESIGN.md exists and referenced | PASS (SHD/TCS classifications, §3 forbidden fields, §7 test strategy) |
+
+#### Assumptions
+
+1. All four Phase-1 documents are frozen for the purpose of this audit — no further edits to PRODUCT_SPEC, DATA_SCHEMA, METHODOLOGY, or PRIVACY_DESIGN were made as part of TASK-008.
+2. The traceability matrix maps what is *specified*, not what is *implemented*. Downstream implementation tasks (TASK-009+) must honour these mappings; runtime verification belongs to TASK-094.
+3. Section numbers cited (e.g., PRODUCT_SPEC §5.1, METHODOLOGY §1.4) assume current document structure. If a future task renumbers sections, TRACEABILITY.md cross-references will need updating.
+4. The 44 engine-rule acceptance criteria are sufficient for full formula coverage but not exhaustive — edge cases discovered during implementation should be added as new ER rows via corrective tasks.
+5. Terminology/unit/timezone audits rely on textual comparison; no machine-enforced glossary exists.
+
+#### Remaining risks
+
+1. **Section-number drift**: If downstream tasks modify Phase-1 documents and renumber sections, TRACEABILITY.md citations may become stale. No automated link-checking for section numbers exists yet.
+2. **Missing acceptance criteria**: The 44 ER rules cover documented formulas, but implementation may reveal unmodelled edge cases (e.g., floating-point rounding interactions, DST boundary rate resolution). These would require corrective audits.
+3. **Privacy test mapping completeness**: Forbidden-field-to-test mapping references TASK-091 through TASK-094. If those tasks are re-scoped or cancelled, SHD fields could become untested. The dependency chain must be preserved.
