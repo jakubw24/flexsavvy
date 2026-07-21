@@ -113,28 +113,79 @@ Generated during ingestion, used to derive confidence labels (see PRODUCT_SPEC.m
 | `outliers_accepted` | boolean | Yes | Whether user has explicitly accepted flagged outliers. Absent = not applicable; `false` = outliers present and unaccepted. |
 | `confidence_label` | enum | No | `"High"`, `"Medium"`, or `"Low"` per PRODUCT_SPEC.md §6.1–§6.2 |
 
-### 4.2 Interval-Level Warning
+### 4.2 Warning Type System
 
-Scoped warnings attached to individual intervals (PRODUCT_SPEC.md §5.10).
+Warnings communicate conditions that affect the reliability or completeness of results (PRODUCT_SPEC.md §5.10). Every warning carries a stable code, severity level, human-readable message, and scope identifier.
 
-| Field | Type | Nullable | Description |
-|---|---|---|---|
-| `utc_start` | string (ISO 8601) | No | The interval this warning applies to |
-| `warning_code` | string | No | Stable identifier, e.g. `"UNRESOLVED_PRICE"`, `"DUPLICATE_TIMESTAMP"`, `"OUTLIER"` |
-| `severity` | enum | No | `"info"`, `"warn"`, or `"error"` |
-| `message` | string | No | Human-readable explanation |
-| `scope` | enum | No | `"interval"` for interval-level warnings. (Dataset-level, scenario-level, and optimisation-level warnings are stored separately.) |
+#### 4.2.1 WarningBase
 
-### 4.3 Dataset-Level Warning
-
-Warnings affecting the entire consumption dataset before any calculation.
+Shared fields present on every warning regardless of scope.
 
 | Field | Type | Nullable | Description |
 |---|---|---|---|
-| `warning_code` | string | No | Stable identifier |
+| `warning_code` | string | No | Stable identifier, e.g. `"UNRESOLVED_PRICE"`, `"DUPLICATE_TIMESTAMP"`, `"MISSING_EXPORT_RATE"` |
 | `severity` | enum | No | `"info"`, `"warn"`, or `"error"` |
 | `message` | string | No | Human-readable explanation |
-| `scope` | enum | No | `"dataset"` |
+| `scope` | enum | No | `"dataset"`, `"interval"`, `"scenario"`, or `"optimisation"` |
+
+#### 4.2.2 DatasetWarning
+
+Warnings affecting the entire consumption dataset before any scenario-specific calculation begins. Extends WarningBase with no additional fields (scope is always `"dataset"`).
+
+Examples: missing intervals exceeding expected count, duplicate timestamps detected during import, statistical outliers outside Q3 + 3×IQR, file format irregularities.
+
+| Field | Type | Nullable | Description |
+|---|---|---|---|
+| (inherited from WarningBase) | — | — | `scope` is always `"dataset"` |
+
+#### 4.2.3 IntervalWarning
+
+Warnings attached to individual half-hour intervals during calculation. Extends WarningBase with interval identity.
+
+Examples: import rate cannot be resolved for this interval (dynamic rate absent), duplicate interval detected at this timestamp, consumption value flagged as outlier.
+
+| Field | Type | Nullable | Description |
+|---|---|---|---|
+| (inherited from WarningBase) | — | — | `scope` is always `"interval"` |
+| `utc_start` | string (ISO 8601) | No | UTC start of the interval this warning applies to |
+
+#### 4.2.4 ScenarioWarning
+
+Warnings affecting a particular scenario's results as a whole. Extends WarningBase with scenario and result identity.
+
+Examples: candidate tariff has no export rate defined while the user has export data, scenario confidence downgraded to Medium or Low, simulation classified as Projection rather than Replay, no flexible loads configured.
+
+| Field | Type | Nullable | Description |
+|---|---|---|---|
+| (inherited from WarningBase) | — | — | `scope` is always `"scenario"` |
+| `result_type` | enum | No | `"current"`, `"tariff_only"`, `"flexibility_only"`, or `"combined"` — identifies which result this warning applies to |
+
+#### 4.2.5 OptimisationWarning
+
+Warnings arising from the scheduling optimisation process. Extends WarningBase with scenario identity and optional affected load identifier.
+
+Examples: a declared appliance cannot be scheduled within its constraints under this scenario, EV module unavailable but EV appliance declared, battery dispatch not available for a battery load, multiple equally-cheap schedules found.
+
+| Field | Type | Nullable | Description |
+|---|---|---|---|
+| (inherited from WarningBase) | — | — | `scope` is always `"optimisation"` |
+| `result_type` | enum | No | `"flexibility_only"` or `"combined"` — identifies which result the optimisation produced |
+| `appliance_id` | string | Yes | Identifier of the affected flexible load. Absent when the warning concerns the optimisation as a whole rather than a specific appliance |
+
+#### 4.2.6 Warning (Union Type)
+
+The full warning type used at scenario and run levels:
+
+```
+Warning = DatasetWarning | IntervalWarning | ScenarioWarning | OptimisationWarning
+```
+
+Discrimination is by the `scope` field. Each member carries all WarningBase fields plus the contextual identity required by its scope.
+
+**Placement rules** (PRODUCT_SPEC.md §5.10):
+- `IntervalResult.warnings` contains **only** `IntervalWarning` entries — scoped to that interval row.
+- Scenario-level result collections (`ScenarioResult`, `SimulationResultSet`) may contain the full `Warning` union.
+- No table refers to an undefined generic `Warning` without specifying which union members are permitted at that location.
 
 ---
 
@@ -327,7 +378,7 @@ The complete input bundle for one simulation run.
 
 ### 8.2 Scenario Result
 
-Output produced by one simulation run against a specific scenario and tariff combination.
+The common result structure shared across all four result types. Specialised result types extend this base with additional named fields.
 
 | Field | Type | Nullable | Description |
 |---|---|---|---|
@@ -341,7 +392,59 @@ Output produced by one simulation run against a specific scenario and tariff com
 | `confidence_label` | enum | No | `"High"`, `"Medium"`, or `"Low"` |
 | `replay_projection_label` | enum | No | `"Replay"` or `"Projection"` per PRODUCT_SPEC.md §6.3 |
 | `interval_results` | array[IntervalResult] | No | Per-interval breakdown records (§5.5 of PRODUCT_SPEC.md) |
-| `warnings` | array[Warning] | No | All warnings applicable to this result (dataset-level, interval-level, scenario-level, optimisation-level) |
+| `daily_breakdowns` | array[DailyCostBreakdown] | No | Aggregated daily cost records for this result (§8.5) |
+| `monthly_breakdowns` | array[MonthlyCostBreakdown] | No | Aggregated monthly cost records for this result (§8.6) |
+| `warnings` | array[Warning] | No | Full warning union: dataset-level, interval-level, scenario-level, and optimisation-level warnings applicable to this result (§4.2.6) |
+
+#### 8.2.1 CurrentResult
+
+The baseline cost under the user's current tariff with no changes.
+
+| Field | Type | Nullable | Description |
+|---|---|---|---|
+| (inherited from ScenarioResult) | — | — | `result_type` is always `"current"` |
+
+CurrentResult has no saving fields. It serves as the baseline against which all other result types are compared.
+
+#### 8.2.2 TariffOnlyResult
+
+The cost under a candidate tariff with identical consumption timing to the current baseline (PRODUCT_SPEC.md §5.2).
+
+| Field | Type | Nullable | Description |
+|---|---|---|---|
+| (inherited from ScenarioResult) | — | — | `result_type` is always `"tariff_only"` |
+| `candidate_tariff_id` | string | No | Identifier of the candidate tariff this result compares against |
+| `tariff_only_saving_pence` | number | No | `current_total_cost_pence − total_cost_pence`. Positive = candidate is cheaper. Derives from unrounded current result values. |
+
+#### 8.2.3 FlexibilityOnlyResult
+
+The minimum achievable cost when only load scheduling changes but the tariff remains the same (PRODUCT_SPEC.md §5.3).
+
+| Field | Type | Nullable | Description |
+|---|---|---|---|
+| (inherited from ScenarioResult) | — | — | `result_type` is always `"flexibility_only"` |
+| `flexibility_only_saving_pence` | number | No | `current_total_cost_pence − total_cost_pence`. Positive = flexibility yields savings. Derives from unrounded current result values. |
+| `appliance_schedules` | array[ApplianceSchedule] | No | Optimised appliance schedules produced by the optimiser. Empty array when no appliances are configured (see §9.4 empty-state semantics). |
+| `ev_schedule` | EVSchedule | Yes | EV charging schedule when the EV module is enabled and configured. Absent (not present) when the EV module is unavailable or not configured — see §9.4.
+| `battery_schedule` | BatteryDispatchSchedule | Yes | Battery dispatch schedule when the battery module is enabled and configured. Absent (not present) when the battery module is unavailable or not configured — see §9.4. |
+
+**Empty-state semantics:** When no flexible loads are configured, `flexibility_only_saving_pence` equals 0, appliance_schedules is an empty array, and a ScenarioWarning with code `"NO_FLEXIBLE_LOADS"` is emitted (PRODUCT_SPEC.md §5.14).
+
+#### 8.2.4 CombinedResult
+
+The minimum achievable cost when both tariff and load scheduling change (PRODUCT_SPEC.md §5.4).
+
+| Field | Type | Nullable | Description |
+|---|---|---|---|
+| (inherited from ScenarioResult) | — | — | `result_type` is always `"combined"` |
+| `candidate_tariff_id` | string | No | Identifier of the candidate tariff this result compares against |
+| `combined_saving_pence` | number | No | `current_total_cost_pence − total_cost_pence`. Derives from unrounded current result values. |
+| `interaction_effect_pence` | number | No | `combined_saving_pence − (tariff_only_saving_pence + flexibility_only_saving_pence)`. Non-zero means the two levers are not independent. References the TariffOnlyResult and FlexibilityOnlyResult for the same candidate tariff and scenario. |
+| `appliance_schedules` | array[ApplianceSchedule] | No | Optimised appliance schedules under this combined scenario. Empty array when no appliances are configured. |
+| `ev_schedule` | EVSchedule | Yes | EV charging schedule under this combined scenario. Absent when the EV module is unavailable or not configured. |
+| `battery_schedule` | BatteryDispatchSchedule | Yes | Battery dispatch schedule under this combined scenario. Absent when the battery module is unavailable or not configured. |
+
+**Saving field derivation rule:** All saving fields (`tariff_only_saving_pence`, `flexibility_only_saving_pence`, `combined_saving_pence`) derive from **unrounded** current result total costs. The unrounded current cost is subtracted from the unrounded candidate/flexible cost, and only the final delta is rounded at presentation.
 
 ### 8.3 Interval Result
 
@@ -356,7 +459,73 @@ One record per half-hour interval in a given scenario's calculation (PRODUCT_SPE
 | `resolved_export_rate` | number | Yes | Export rate (p/kWh). `null` or absent when not applicable. |
 | `import_cost_pence` | number | Yes | Cost for this interval: `import_kwh × resolved_import_rate`. Excluded when rate unresolved. |
 | `export_income_pence` | number | Yes | Income for this interval: `export_kwh × resolved_export_rate`. Zero when either is unavailable. |
-| `warnings` | array[Warning] | No | Interval-level warnings for this row. Empty array if none. |
+| `warnings` | array[IntervalWarning] | No | Interval-level warnings for this row **only**. Contains only `IntervalWarning` entries with matching `utc_start`. Empty array if none. See §4.2.6 placement rules. |
+
+### 8.4 SimulationResultSet
+
+The complete run-level bundle produced by one simulation execution.
+
+| Field | Type | Nullable | Description |
+|---|---|---|---|
+| `schema_version` | string | No | Schema version, e.g. `"1.0.0"` |
+| `scenario_id` | string | No | Unique identifier for the scenario configuration that produced this result set |
+| `current_result` | CurrentResult | No | Always present — the baseline cost under the user's current tariff |
+| `tariff_only_results` | array[TariffOnlyResult] | Yes | Zero or more, one per candidate tariff. Absent or empty when no candidate tariffs are configured (PRODUCT_SPEC.md §5.14). |
+| `flexibility_only_result` | FlexibilityOnlyResult | No | Always present. When no flexible loads are configured, total_cost equals current cost and saving is 0 (PRODUCT_SPEC.md §5.14). |
+| `combined_results` | array[CombinedResult] | Yes | Zero or more, one per candidate tariff paired with the flexibility optimisation. Absent or empty when no candidate tariffs are configured (PRODUCT_SPEC.md §5.14). |
+| `warnings` | array[Warning] | No | Run-level warnings applicable to the full result set. May include dataset-level and scenario-level warnings not attached to a specific result. |
+
+#### Collection rules (per PRODUCT_SPEC §5.14)
+
+1. **No candidate tariffs configured**: `tariff_only_results` is empty; `combined_results` is empty. No fabricated zero-saving scenarios are produced.
+2. **Candidate tariffs with no flexible loads**: Each candidate produces one TariffOnlyResult and one CombinedResult where the CombinedResult equals the TariffOnlyResult (same cost, same saving). `interaction_effect_pence` is 0.
+3. **Flexible loads configured but no candidate tariffs**: `flexibility_only_result` is produced normally; `tariff_only_results` and `combined_results` are empty.
+4. **No fabricated candidate results**: Every TariffOnlyResult and CombinedResult corresponds to an actual candidate tariff from the configuration. The count of tariff-only results equals the count of candidate tariffs.
+
+### 8.5 DailyCostBreakdown
+
+Aggregated cost record for one Europe/London calendar date within one scenario result. Multiple intervals map to one daily record; DST transitions mean a single local date may contain 46, 48, or 50 half-hour intervals.
+
+| Field | Type | Nullable | Description |
+|---|---|---|---|
+| `local_date` | string (YYYY-MM-DD) | No | Europe/London calendar date for this daily record |
+| `scenario_id` | string | No | References the parent scenario configuration |
+| `result_type` | enum | No | `"current"`, `"tariff_only"`, `"flexibility_only"`, or `"combined"` — identifies which result this breakdown belongs to |
+| `import_cost_pence` | number | No | Sum of import costs across all intervals on this local date |
+| `standing_charge_pence` | number | No | Standing charge for this date. Applied once per distinct Europe/London date regardless of interval count (DST invariant). |
+| `export_income_pence` | number | No | Sum of export income across all intervals on this local date. Zero when no export rate or export data. |
+| `net_cost_pence` | number | No | `import_cost_pence + standing_charge_pence − export_income_pence` for this date |
+
+**Reconciliation:** The sum of all daily `net_cost_pence` values within a result must equal the result's `total_cost_pence` exactly (before display rounding). This confirms interval-level records plus standing charges aggregate correctly.
+
+### 8.6 MonthlyCostBreakdown
+
+Aggregated cost record for one Europe/London calendar month within one scenario result. Month boundaries follow the Europe/London calendar, not UTC.
+
+| Field | Type | Nullable | Description |
+|---|---|---|---|
+| `local_month` | string (YYYY-MM) | No | Europe/London calendar month for this monthly record, e.g. `"2025-03"` |
+| `scenario_id` | string | No | References the parent scenario configuration |
+| `result_type` | enum | No | `"current"`, `"tariff_only"`, `"flexibility_only"`, or `"combined"` — identifies which result this breakdown belongs to |
+| `import_cost_pence` | number | No | Sum of import costs across all intervals falling within this local month |
+| `standing_charge_pence` | number | No | Total standing charges for all distinct dates within this month |
+| `export_income_pence` | number | No | Sum of export income across all intervals within this month. Zero when no export rate or export data. |
+| `net_cost_pence` | number | No | `import_cost_pence + standing_charge_pence − export_income_pence` for this month |
+
+**Reconciliation:** The sum of all monthly `net_cost_pence` values within a result must equal the result's `total_cost_pence` exactly (before display rounding). Each monthly record must also equal the sum of its constituent daily records. Display rounding is applied only at presentation boundaries.
+
+### 8.7 Schedule Collection Rules
+
+For flexibility-only and combined results, schedule collections are connected to their parent result as follows:
+
+1. **Appliance schedules** (`appliance_schedules`): Present on both FlexibilityOnlyResult and CombinedResult. The array is **empty (not absent)** when no flexible appliances are configured but the field itself is always present.
+2. **EV schedule** (`ev_schedule`): **Absent (field not present)** when the EV module is unavailable or no EV profile is configured. Present (possibly empty `charging_intervals`) when the module is enabled and an EV is configured.
+3. **Battery schedule** (`battery_schedule`): **Absent (field not present)** when the battery module is unavailable or no battery profile is configured. Present (possibly empty `dispatch_intervals`) when the module is enabled and a battery is configured.
+4. **Infeasible loads**: When a configured load cannot be scheduled within its constraints, it does **not** silently disappear from the schedules array. Instead:
+   - The appliance schedule entry has `recommended_utc_start: null`, `satisfied_constraints: false`, and a populated `infeasibility_reason`.
+   - A corresponding OptimisationWarning is emitted with code `"SCHEDULING_INFEASIBLE"` (or equivalent), referencing the affected `appliance_id`.
+
+---
 
 ---
 
@@ -410,6 +579,17 @@ Conditional output — produced only when the battery module is implemented and 
 | `action` | enum | No | `"charge"`, `"discharge"`, or `"idle"` |
 | `power_kw` | number | No | Absolute power in kW. Positive for both charge and discharge; action field disambiguates direction. |
 | `soc_after_percent` | number | No | State of charge after this interval's action |
+
+### 9.4 Empty-State Semantics for Schedule Outputs
+
+When flexibility-only or combined results are produced, schedule collections follow these rules (PRODUCT_SPEC.md §5.14):
+
+1. **Appliance schedule array may be empty**: When no flexible appliances are configured in the scenario, `appliance_schedules` is an empty array (`[]`). The field is never absent — it is always present on FlexibilityOnlyResult and CombinedResult.
+2. **EV schedule absent when module unavailable**: The `ev_schedule` field is entirely absent (not present in the result object) when the EV optimisation module has not been implemented or is not enabled, even if an EV profile exists in the configuration.
+3. **Battery schedule absent when module unavailable**: The `battery_schedule` field is entirely absent (not present in the result object) when the battery optimisation module has not been implemented or is not enabled, even if a battery profile exists in the configuration.
+4. **Infeasible configured loads do not silently disappear**: When a declared flexible appliance cannot be scheduled within its constraints (e.g., the time window is too short for the required cycle duration):
+   - An ApplianceSchedule entry is still emitted with `recommended_utc_start: null`, `cycle_interval_count: null`, `satisfied_constraints: false`, and a populated `infeasibility_reason` string.
+   - A corresponding OptimisationWarning (scope: `"optimisation"`) is emitted with a stable code such as `"SCHEDULING_INFEASIBLE"`, referencing the affected `appliance_id`.
 
 ---
 
@@ -622,12 +802,21 @@ This table shows which output fields are derived from which input fields. All ca
 | `export_income_pence` (per interval) | `export_kwh` × `resolved_export_rate` | Zero when either unavailable |
 | `standing_charge_pence` (total) | `standing_charge` × distinct local dates in span | Once per Europe/London date; DST invariant |
 | `total_cost_pence` | Sum of interval costs + standing charges − export income | Uses unrounded intermediates |
-| `tariff_only_saving` | `current_net_cost` − `candidate_net_cost` | Per PRODUCT_SPEC.md §5.2 |
-| `flexibility_only_saving` | `current_net_cost` − `flexible_net_cost` | Per PRODUCT_SPEC.md §5.3 |
-| `combined_saving` | `current_net_cost` − `combined_net_cost` | Per PRODUCT_SPEC.md §5.4 |
+| `tariff_only_saving_pence` | Unrounded current `total_cost_pence` − unrounded candidate `total_cost_pence` | Per PRODUCT_SPEC.md §5.2; on TariffOnlyResult |
+| `flexibility_only_saving_pence` | Unrounded current `total_cost_pence` − unrounded flexible `total_cost_pence` | Per PRODUCT_SPEC.md §5.3; on FlexibilityOnlyResult |
+| `combined_saving_pence` | Unrounded current `total_cost_pence` − unrounded combined `total_cost_pence` | Per PRODUCT_SPEC.md §5.4; on CombinedResult |
+| `interaction_effect_pence` | `combined_saving_pence` − (`tariff_only_saving_pence` + `flexibility_only_saving_pence`) | Per PRODUCT_SPEC.md §5.4; on CombinedResult |
+| DailyCostBreakdown | Aggregation of interval results by Europe/London local_date + standing charges | Per PRODUCT_SPEC.md §5.6, §8.5 |
+| MonthlyCostBreakdown | Aggregation of daily breakdowns by Europe/London month | Per PRODUCT_SPEC.md §5.6, §5.12, §8.6 |
+| Appliance schedules | Appliance profile + interval prices under given tariff/scenario | Deterministic optimiser output; on FlexibilityOnlyResult and CombinedResult (§9.4) |
+| EV schedule | EV profile + interval prices under given tariff/scenario | Conditional output when EV module enabled; §9.4 absence rules |
+| Battery dispatch schedule | Battery profile + interval prices under given tariff/scenario | Conditional output when battery module enabled; §9.4 absence rules |
 | `confidence_label` | Quality report + tariff completeness | Rules in PRODUCT_SPEC.md §6.2 |
 | `replay_projection_label` | Interval dates vs current UTC time | Rules in PRODUCT_SPEC.md §6.3 |
-| Appliance schedule | Appliance profile + interval prices | Deterministic optimiser output |
+| DatasetWarning (scoped) | Ingestion quality checks | Emitted at SimulationResultSet.run-level warnings or within ScenarioResult.warnings |
+| IntervalWarning (scoped) | Per-interval calculation checks | Attached to IntervalResult.warnings only; matches by `utc_start` |
+| ScenarioWarning (scoped) | Scenario-level validity and assumption checks | Within ScenarioResult.warnings or SimulationResultSet.warnings; identified by `result_type` |
+| OptimisationWarning (scoped) | Scheduling process checks | Within ScenarioResult.warnings for flex/combined results; identified by `result_type` and optional `appliance_id` |
 
 ---
 
@@ -657,3 +846,4 @@ This table shows which output fields are derived from which input fields. All ca
 | Version | Date | Task | Change |
 |---|---|---|---|
 | 1.0.0 | 2026-07-21 | TASK-005 | Initial canonical data schema: consumption, quality, tariffs (flat/TOU/dynamic), appliances, EV, battery, carbon, scenarios, results, warnings, units, examples, cross-reference tables, runtime constraints |
+| 1.1.0 | 2026-07-21 | Corrective audit | Added complete warning hierarchy (WarningBase, DatasetWarning, IntervalWarning, ScenarioWarning, OptimisationWarning, Warning union); specialised result types (CurrentResult, TariffOnlyResult, FlexibilityOnlyResult, CombinedResult) with named saving fields; DailyCostBreakdown and MonthlyCostBreakdown; SimulationResultSet run-level bundle; schedule empty-state semantics; updated cross-reference table |

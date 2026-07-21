@@ -658,6 +658,33 @@ python3 -c "<markdown relative-link checker from QUALITY_GATES.md>"
 **Remaining risks**:
 1. Implementers who already coded to the blanket "all rates non-negative" rule in TASK-037+ will need to verify their dynamic-pricing code allows negative values.
 
+## Corrective Audit — Canonical Result and Warning Schemas (2026-07-21)
+
+**Trigger**: Review revealed that TASK-005 created an initial data schema but omitted several canonical structures required for downstream implementation tasks.
+
+**Gaps identified**:
+1. **No complete warning hierarchy**: Only IntervalWarning and DatasetWarning were defined as flat types. Missing WarningBase (shared fields), ScenarioWarning, OptimisationWarning, and the formal `Warning` union type. Placement rules were not specified.
+2. **No specialised result types**: The generic ScenarioResult had no subtypes for current, tariff-only, flexibility-only, and combined results. Named saving fields (`tariff_only_saving_pence`, `flexibility_only_saving_pence`, `combined_saving_pence`) and `interaction_effect_pence` were only described in prose (PRODUCT_SPEC §5.2–§5.4) but not represented as explicit schema fields.
+3. **No breakdown structures**: DailyCostBreakdown and MonthlyCostBreakdown were referenced in PRODUCT_SPEC §5.6 and §5.12 but had no canonical type definitions.
+4. **Optimisation outputs disconnected from results**: Schedule collections (appliance, EV, battery) were defined in §9 but not connected to FlexibilityOnlyResult or CombinedResult. Empty-vs-absent semantics were unspecified.
+5. **No run-level bundle**: SimulationResultSet was missing entirely despite being required for the canonical result set per PRODUCT_SPEC §5.14.
+6. **Cross-reference table incomplete**: Output-to-source mapping table listed saving fields with old shorthand names (`tariff_only_saving` instead of `tariff_only_saving_pence`) and omitted daily/monthly breakdowns, interaction effect, schedule outputs, and scoped warning sources.
+7. **Undefined generic Warning reference**: IntervalResult.warnings and ScenarioResult.warnings referenced a bare `Warning` type without specifying which union members are permitted at each location.
+
+**Changes applied to docs/DATA_SCHEMA.md**:
+- §4.2: Replaced flat IntervalWarning and DatasetWarning definitions with complete hierarchy (§4.2.1–§4.2.6): WarningBase, DatasetWarning, IntervalWarning, ScenarioWarning, OptimisationWarning, and the formal `Warning` union type with discrimination-by-scope and placement rules.
+- §8.2: Added daily_breakdowns and monthly_breakdowns to ScenarioResult; updated warnings field to reference full `Warning` union.
+- §8.2.1–§8.2.4: Defined CurrentResult, TariffOnlyResult (with `tariff_only_saving_pence` and `candidate_tariff_id`), FlexibilityOnlyResult (with `flexibility_only_saving_pence` and schedule collections), CombinedResult (with `combined_saving_pence`, `interaction_effect_pence`, and schedule collections).
+- §8.3: Changed IntervalResult.warnings from generic `array[Warning]` to `array[IntervalWarning]` only, per placement rules.
+- §8.4: Added SimulationResultSet with schema_version, scenario_id, current_result, tariff_only_results, flexibility_only_result, combined_results, and run-level warnings. Collection rules aligned with PRODUCT_SPEC §5.14.
+- §8.5–§8.6: Defined DailyCostBreakdown and MonthlyCostBreakdown with Europe/London local_date/local_month, scenario identity, import/standing/export/net fields, and reconciliation statements.
+- §8.7: Added schedule collection rules connecting optimisation outputs to result types.
+- §9.4: Added empty-state semantics section documenting empty-array vs absent-field behaviour for appliance, EV, and battery schedules, plus infeasible load handling.
+- §11.2: Updated cross-reference table with all named saving fields (with correct `_pence` suffixes), interaction_effect_pence, daily/monthly breakdowns, schedule outputs, and scoped warning sources.
+- Appendix A: Added 1.1.0 revision entry documenting this corrective audit.
+
+**Files changed**: `docs/DATA_SCHEMA.md` (sections 4.2, 8.2–8.7, 9.4, 11.2, Appendix A), `docs/PROGRESS.md` (this entry).
+
 ## Known Risks
 
 | Risk | Severity | Mitigation |
