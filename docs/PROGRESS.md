@@ -2,10 +2,10 @@
 
 ## Project State
 
-Tasks 001 through 005 are complete.
-Product documentation now includes docs/PRODUCT_SPEC.md and docs/DATA_SCHEMA.md.
+Tasks 001 through 006 are complete.
+Product documentation now includes docs/PRODUCT_SPEC.md, docs/DATA_SCHEMA.md, and docs/METHODOLOGY.md.
 No application code, no package manifest, no build output.
-TASK-006 is next.
+TASK-007 is next.
 
 ## Completed Tasks
 
@@ -15,7 +15,8 @@ TASK-006 is next.
 | TASK-002 | Establish project governance and source-of-truth structure | 2026-07-20 | Created REPOSITORY_CONVENTIONS.md, QUALITY_GATES.md, EXTERNAL_DATA_POLICY.md; updated README with governance links; marked task DONE in index |
 | TASK-003 | Validate the fresh-start baseline | 2026-07-20 | Verified clean state: no legacy code, all 114 task files present, governance consistent, links resolve; created PROJECT_BASELINE.md; marked task DONE in index |
 | TASK-004 | Create product specification | 2026-07-20 | Created docs/PRODUCT_SPEC.md with users, JTBD, positioning, scope, journey, outputs, confidence labels, terminology, non-goals; verified output coverage and non-goal testability; marked task DONE in index. **Key decisions:** (1) standing charge applied per calendar day across full analysis span — matching UK supplier practice — even on days with missing data; (2) export income included via `current_net_cost` when both export data and an export rate are available, otherwise treated as zero; (3) variable renamed from `current_cost` to `current_net_cost` throughout §5 formulas. See Known Risks below.
-| TASK-005 | Create canonical data schema | 2026-07-21 | Created docs/DATA_SCHEMA.md with consumption, quality, tariff (flat/TOU/dynamic), appliance, EV, battery, carbon, scenario and result models; nullability conventions distinguishing missing from measured zero; UTC start-inclusive/end-exclusive intervals; kWh and VAT-inclusive pence units; schema versioning rules; valid and invalid JSON examples; unit cross-reference table; field-to-source mapping table; runtime constraints. **Key decisions:** (1) schema v1.0.0 with semantic-versioned bumps for structural changes; (2) null = missing observation, 0 = measured zero — never conflated; (3) `schema_version` required on all data-carrying documents including exports; (4) derived fields (`utc_end`, `local_date`, `local_hour`) must not be independently edited after ingestion-time derivation.
+| TASK-005 | Create canonical data schema | 2026-07-21 | Created docs/DATA_SCHEMA.md with consumption, quality, tariff (flat/TOU/dynamic), appliance, EV, battery, carbon, scenario and result models; nullability conventions distinguishing missing from measured zero; UTC start-inclusive/end-exclusive intervals; kWh and VAT-inclusive pence units; schema versioning rules; valid and invalid JSON examples; unit cross-reference table; field-to-source mapping table; runtime constraints. **Key decisions:** (1) schema v1.0.0 with semantic-versioned bumps for structural changes; (2) null = missing observation, 0 = measured zero — never conflated; (3) `schema_version` required on all data-carrying documents including exports; (4) derived fields (`utc_end`, `local_date`, `local_hour`) must not be independently edited after ingestion-time derivation. |
+| TASK-006 | Create calculation methodology | 2026-07-21 | Created docs/METHODOLOGY.md with billing formulas, standing charge, export income, net cost aggregation, rounding/precision rules, savings decomposition, appliance candidate generation/scoring/portfolio optimisation, EV energy requirement/allocation/unmet energy, battery SOC/actions/transitions/constraints/DP/rolling horizons/terminal SOC, carbon emissions and weighted scoring, edge cases (missing data, DST, annualisation); three worked examples (billing, EV, battery) independently verified by Python assertions. **Key decisions:** (1) intermediate values retain full precision; rounding only at presentation boundary (half-up to £0.01); (2) efficiency losses split as sqrt(round_trip_efficiency) per charge/discharge direction for battery; (3) rolling 48-hour horizons with terminal SOC penalty for smooth transitions; (4) annualisation uses 365.25 days/year with visible estimate assumption. |
 
 ## Decisions
 
@@ -575,7 +576,7 @@ $ git diff --check
 | Privacy compliance for smart-meter data | Critical | private-data/ directory enforced via .gitignore; privacy design in TASK-007 |
 | Tariff adapter correctness | Critical | Fixture-only tests mandated by AGENTS.md |
 | Standing charge model assumption — calendar span vs. days with data | Medium | Choice recorded in TASK-004 notes and §5.1 of PRODUCT_SPEC.md; may need review during QA if test households have sparse data across long date ranges |
-| Export income omission for suppliers without export rates | Low | Defaulted to zero per §5.1; impact documented in terminology table and PROGRESS.md; TASK-006 (calculation methodology) will formalise edge-case behaviour |
+| Export income omission for suppliers without export rates | Low | Defaulted to zero per §5.1; impact documented in terminology table and PROGRESS.md; formalised in docs/METHODOLOGY.md §1.3 (TASK-006) |
 
 ## Next Task
 
