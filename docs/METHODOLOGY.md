@@ -259,26 +259,36 @@ excludes the appliance from optimisation for that scenario.
 
 ### 3.3 Cost scoring of a single candidate
 
-For one candidate position _p_ under one tariff:
+For one candidate position _p_ under one tariff, the appliance cost is computed from the
+appliance's own interval energy profile — **not** from the household's observed total
+import consumption for those intervals. Household `import_kwh` includes all loads and must
+never be treated as equivalent to appliance energy.
+
+For the current constant-power appliance model, each profile interval contributes:
 
 ```
-cost_of_p (p) = Σ_{i ∈ p.intervals} import_kwh_i (kWh) × resolved_import_rate_i (p/kWh)
+appliance_energy_j (kWh) = power_kw (kW) × 0.5 (h)
 ```
 
-This is the **import cost attributable to the appliance's intervals** at position _p_.
-The per-interval consumption contributed by the appliance is:
+The candidate appliance cost is:
 
 ```
-appliance_kwh_per_interval (kWh) = power_kw (kW) × 0.5 (h)
+candidate_appliance_cost_p (p) = Σ_{j ∈ p.intervals} appliance_energy_j (kWh) × resolved_rate_of_candidate_interval_j (p/kWh)
 ```
 
-So equivalently:
+The **best position** for one appliance is the candidate with minimum `candidate_appliance_cost_p`.
 
-```
-cost_of_p (p) = Σ_{i ∈ p.intervals} [power_kw × 0.5] (kWh) × resolved_import_rate_i (p/kWh)
-```
+**Full scenario cost:** The total scenario bill is calculated from the adjusted household
+profile, not by adding an isolated appliance saving to the baseline. When shifting an
+already-modelled appliance:
 
-The **best position** for one appliance is the candidate with minimum `cost_of_p`.
+1. Remove its declared current profile energy (`power_kw × 0.5 h` per occupied interval)
+   from the baseline consumption at each of those intervals.
+2. Never permit negative baseline consumption: if the appliance's declared energy exceeds
+   the observed household import at any interval, clip that interval's adjusted baseline
+to zero.
+3. Insert the appliance profile energy at each interval of the candidate position.
+4. Bill the resulting adjusted scenario profile using standard interval costing (see §1.1).
 
 ### 3.4 Baseline subtraction
 
@@ -291,7 +301,7 @@ baseline_cost (p) = Σ_{i ∈ baseline.intervals} [power_kw × 0.5] (kWh) × res
 Isolated per-appliance saving estimate:
 
 ```
-appliance_saving_estimate (p) = baseline_cost (p) − min(cost_of_p over C)
+appliance_saving_estimate (p) = baseline_cost (p) − min(candidate_appliance_cost_p over C)
 ```
 
 This is **explanatory only and not additive** across appliances. The UI must not sum
@@ -345,18 +355,56 @@ implementation. The default must be documented at runtime.
 ### 4.2 Charging window definition
 
 The charging window spans from `plug_in_window_start` to `departure_time_local`, both
-in Europe/London local time:
+in Europe/London local time. Two canonical cases exist:
+
+1. **Same-day window** — If departure local time is strictly later than plug-in local
+   time (e.g. 08:00 to 12:00), the entire window falls on one calendar date.
+   The window duration is `departure_time_local − plug_in_window_start`.
+
+2. **Overnight window** — If departure local time is equal to or earlier than plug-in
+   local time (e.g. 23:00 to 07:00), departure occurs on the following local date.
+   The window duration is `(24 − plug_in_window_start_hours) + departure_time_local_hours`.
+   This is valid and must never be treated as an error.
+
+The window duration in hours is computed as:
 
 ```
-window_duration_hours (h) = departure_time_local − plug_in_window_start
+if departure_time_local > plug_in_window_start:
+    # same-day
+    window_duration_hours (h) = departure_time_local − plug_in_window_start
+else:
+    # overnight — departure on the following local date
+    window_duration_hours (h) = (24:00 − plug_in_window_start) + departure_time_local
 ```
 
-If the window crosses midnight, this is treated as an error unless explicitly declared
-in a future task. The number of available half-hour intervals is:
+The charging window is generated from actual Europe/London zoned calendar boundaries.
+Local half-hour slots are then mapped to real UTC intervals using the Europe/London
+time-zone rules in effect on each date. This means:
+
+- The number of available UTC half-hour intervals is determined by enumerating
+  actual UTC boundary pairs within the local time window, **not** by dividing a nominal
+  duration by 0.5.
+- On a spring-forward day (last Sunday in March), 01:00–02:00 BST does not exist;
+  any local half-hour slots that would fall in this gap are skipped, producing one
+  fewer UTC interval than the nominal count would suggest.
+- On a fall-back day (last Sunday in October), 01:00 UTC occurs twice locally
+  (as 01:00 GMT and again as 01:00 BST). The window yields one extra UTC interval
+  compared to the nominal count.
+- These DST adjustments are required so that available intervals match actual UTC
+  half-hour slots resolvable against tariff rates (see §7.2).
+
+**Example — overnight window 23:00–07:00 on a non-DST date:**
 
 ```
-available_intervals = window_duration_hours (h) ÷ 0.5 (h/interval)
+window_duration_hours = (24 − 23) + 7 = 1 + 7 = 8 h
+Nominal intervals = 16.
+On a normal day (no DST boundary), this maps to exactly 16 UTC half-hour intervals:
+    Day 1: 23:00, 23:30 local → 2 UTC intervals
+    Day 2: 00:00 through 06:30 local → 14 UTC intervals
+Total = 16 ✓
 ```
+
+This is a valid overnight window and serves as the canonical worked example in §4.5.
 
 ### 4.3 Cheapest-interval allocation
 
@@ -678,21 +726,32 @@ performed with carbon-aware scheduling if the user enables it.
 
 ### 6.3 Weighted cost-carbon scoring
 
-When both cost and carbon objectives are considered, a weighted score is:
+When both cost and carbon objectives are considered, a weighted objective function is used
+with lower values preferred:
 
 ```
-weighted_score_i = cost_weight × normalised_cost_i + carbon_weight × (−normalised_emissions_i)
+weighted_objective_i = cost_weight × normalised_cost_i + carbon_weight × normalised_emissions_i
 ```
+
+The candidate with the **minimum** weighted objective is selected.
 
 Where:
-- `cost_weight` and `carbon_weight` sum to 1.0 (default weights documented at runtime).
-- `normalised_cost_i` = `(cost_i − min_cost) ÷ (max_cost − min_cost)` over all candidate
-  schedules, clamped to [0, 1]. When `max_cost = min_cost`, normalised value is 0.
-- `normalised_emissions_i` computed analogously.
-- The negative sign on emissions means lower emissions produce a higher score (preferred).
+- `cost_weight` and `carbon_weight` sum to 1.0. Default weights are visible and
+  documented at runtime.
+- `normalised_cost_i` = `(cost_i − min_cost) ÷ (max_cost − min_cost)` across all candidate
+  schedules, clamped to [0, 1]. Lower cost produces a lower normalised value.
+- `normalised_emissions_i` computed analogously:
+  `(emissions_i − min_emissions) ÷ (max_emissions − min_emissions)`, clamped to [0, 1].
+  Lower emissions produce a lower normalised value.
+- When a component range has `max = min` (zero variance), its normalised value is 0
+  for all candidates.
+- Monetary totals are unchanged by the scoring mode. The weighted objective only affects
+  candidate selection, not the computed cost or emission values themselves.
+- All component values (normalised_cost, normalised_emissions) and the final
+  weighted_objective are exposed in results so the user can inspect each contribution.
 
-The schedule maximising the weighted score across all intervals is selected. This is
-a transparent Pareto-front approximation, not a black-box multi-objective optimisation.
+This is a transparent Pareto-front approximation with explicit weights, not a
+black-box multi-objective optimisation.
 
 ---
 
@@ -751,3 +810,4 @@ assumption that results are based on limited-period data extrapolated linearly.
 | Version | Date | Task | Change |
 |---|---|---|---|
 | 1.0.0 | 2026-07-21 | TASK-006 | Initial calculation methodology: billing, standing charge, export, aggregation, rounding, savings decomposition, appliance optimisation, EV charging, battery dispatch, carbon emissions, edge cases (missing data, DST, annualisation), worked billing/EV/battery examples |
+| 1.1.0 | 2026-07-21 | Corrective audit | §3.3: corrected appliance candidate scoring to use appliance energy profile not household import_kwh; added baseline subtraction rules (remove appliance, clip-to-zero, insert, bill adjusted profile). §4.2: replaced midnight-crossing error rule with same-day/overnight window logic per TASK-054; interval count derived from actual Europe/London UTC boundaries not nominal division; DST spring-forward/fall-back handling. §6.3: replaced maximisation-with-negative-sign objective with lower-is-better minimisation (weighted_objective = cost_weight × normalised_cost + carbon_weight × normalised_emissions); both components now lower-is-better; weights visible and sum to 1; zero-variance normalisation returns 0; monetary totals unchanged; component values exposed.

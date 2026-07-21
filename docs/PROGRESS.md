@@ -685,6 +685,42 @@ python3 -c "<markdown relative-link checker from QUALITY_GATES.md>"
 
 **Files changed**: `docs/DATA_SCHEMA.md` (sections 4.2, 8.2–8.7, 9.4, 11.2, Appendix A), `docs/PROGRESS.md` (this entry).
 
+## Corrective Audit — Task 6 Appliance, EV and Carbon Methodology (2026-07-21)
+
+**Trigger**: Review of `docs/METHODOLOGY.md` (§3.3, §4.2, §6.3) against TASK-006 requirements, TASK-054 same-day/overnight EV window requirements, and TASK-069 weighted scoring requirements.
+
+**Three defects corrected**:
+
+| # | Section | Defect | Correction |
+|---|---------|--------|------------|
+| A | §3.3 Appliance cost scoring | Cost formula used household `import_kwh_i` (total observed import) as the basis for candidate cost — false equivalence between household interval energy and appliance interval energy. Baseline subtraction procedure was absent. | Replaced with appliance-energy-profile formula: `candidate_appliance_cost_p = sum(appliance_energy_j × resolved_rate_of_candidate_interval_j)` where `appliance_energy_j = power_kw × 0.5 h`. Added explicit 4-step baseline correction: (1) remove appliance declared profile from baseline, (2) clip-to-zero never-negative rule, (3) insert at candidate position, (4) bill adjusted scenario. |
+| B | §4.2 EV charging windows | Every midnight-crossing window treated as an error. Interval count computed by `window_duration_hours ÷ 0.5` which fails at DST boundaries. Overnight windows (e.g. 23:00→07:00) are normal usage and must not error. | Replaced with same-day/overnight logic per TASK-054 requirement 1: departure > plug-in = same-day; departure ≤ plug-in = overnight on following date. Interval count derived by enumerating actual Europe/London UTC boundary pairs, not nominal division. Spring-forward and fall-back DST handling documented. Existing 23:00–07:00 worked example preserved as a valid overnight window. |
+| C | §6.3 Weighted scoring | Objective used `weighted_score = cost_weight × normalised_cost + carbon_weight × (−normalised_emissions)` with maximisation — the negative sign on emissions meant lower emissions produced a higher score, but increasing normalised cost also produced a higher score, rewarding expensive candidates. | Replaced with lower-is-better minimisation: `weighted_objective = cost_weight × normalised_cost + carbon_weight × normalised_emissions`. Both components lower-is-better. Weights visible and sum to 1. Zero-variance returns 0. Monetary totals unchanged by scoring mode. Component values exposed. Removed contradictory negative sign and maximising wording. |
+
+**Files changed**: `docs/METHODOLOGY.md` (§3.3, §4.2, §6.3, Appendix A revision history), `docs/PROGRESS.md` (this entry).
+
+**Commands executed**:
+```bash
+python3 <weighted_objective_verification>
+# Test 1 PASS: cheaper cost → lower normalised cost component
+# Test 2 PASS: lower emissions → lower normalised emissions component
+# Test 3 PASS: cost_weight=1.0 selects cheaper candidate (minimisation)
+# Test 4 PASS: carbon_weight=1.0 selects lower-emissions candidate (minimisation)
+# Test 5 PASS: zero-variance range → normalised value = 0
+# Test 6 PASS: monetary totals unchanged by scoring mode
+# All verification assertions passed.
+
+rg -n 'must not cross midnight|treated as an error|window_duration_hours.*0.5|weighted_score|negative sign|maximising|import_kwh_i.*candidate' docs/METHODOLOGY.md
+# Only match: line 367 "This is valid and must never be treated as an error" (new correct wording)
+# All obsolete patterns eliminated.
+
+GIT_PAGER=cat git diff --check
+# Exit code 0 — clean.
+
+git status --short
+# M docs/METHODOLOGY.md
+```
+
 ## Known Risks
 
 | Risk | Severity | Mitigation |
